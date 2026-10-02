@@ -1,0 +1,20 @@
+{
+  "name": "mangrovebackreef",
+  "build": { "dockerfile": "Dockerfile" },
+  "containerUser": "root",
+  "remoteUser": "root",
+  "features": {
+    "ghcr.io/rocker-org/devcontainer-features/rstudio-server": {}
+  },
+  "postCreateCommand": "Rscript -e 'renv::restore(prompt = FALSE)'",
+  "postAttachCommand": {
+    "rstudio-start": "rserver"
+  },
+  "forwardPorts": [8787],
+  "portsAttributes": {
+    "8787": { "label": "RStudio IDE" }
+  },
+  "customizations": {
+    "vscode": { "extensions": ["REditorSupport.r"] }
+  }
+}
