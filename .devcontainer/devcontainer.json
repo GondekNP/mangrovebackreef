@@ -6,7 +6,7 @@
   "features": {
     "ghcr.io/rocker-org/devcontainer-features/rstudio-server": {}
   },
-  "postCreateCommand": "Rscript -e 'renv::restore(prompt = FALSE)'",
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
   "postAttachCommand": {
     "rstudio-start": "rserver"
   },
