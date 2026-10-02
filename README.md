@@ -14,3 +14,18 @@
 ###### <sup>7</sup> Marine Ecology Department, Faculty of Biology and Chemistry, University of Bremen, Leobener Strasse, 28359, Bremen, Germany
 
 ##### Mangrove trees occur in a variety of geomorphic and sedimentary settings. Yet, studies investigating their role as habitat providers often focus on the most common biophysical types, such as deltaic, estuarine, open coast or lagoonal mangroves on soft sediments, disregarding less typical environments. Here, we investigated the influence of individual mangrove trees growing on a consolidated backreef system (Laucala Bay, Fiji) on habitat use by reef fishes. Combining field surveys and an experiment, we quantified the extent to which reef mangrove trees serve as habitat for solitary or shoaling reef fishes. Using mangrove tree mimics, we disentangled effects attributable to the physical structure of trees from those related to their bio-chemical properties. We found that fish numbers were 3.7 times higher within close proximity to the mangrove trees than at control sites and correlated significantly with root system perimeter. The roots of larger trees sheltered aggregations of juveniles and adults at incoming and high tides. Mangrove trees and mimics attracted fishes alike. We show that mangrove trees on backreefs provide habitat for shoaling and adult reef fishes in addition to serving as nursery areas, an ecosystem service otherwise lacking on backreef areas with low structural complexity.
+
+### Reproducing the analysis
+Open the repo in VS Code and choose **Reopen in Container** (or use GitHub Codespaces). The [devcontainer](.devcontainer/) builds on [Rocker](https://rocker-project.org/) (R 4.5) and runs `renv::restore()` to install the exact package versions recorded in [`renv.lock`](renv.lock). Outside a container, run `renv::restore()` from the repo root.
+
+Run everything from the repo root (so `.Rprofile` activates the renv library):
+
+```sh
+Rscript run_all.R
+```
+
+This runs each script in `R code/` in a fresh R session and writes its console output (`.txt`) and figures (`.pdf`) to `output/`, along with `sessionInfo.txt`. Scripts can also be run individually from the repo root.
+
+Notes:
+- The scripts originally sourced `HighstatLibV7.R` (Zuur et al., Highland Statistics Ltd), which is copyrighted and not included. Its only use, `panel.cor()` in exploratory `pairs()` plots, is commented out; no model depends on it.
+- The paper's analyses were run in R 3.5.0; `renv.lock` pins R 4.5.3 and current packages. Results match the paper closely (e.g. the shoaling GAMM p-values exactly), with small differences in some glmmTMB p-values (tree vs. mimic p = 0.155 vs. 0.157 published).
