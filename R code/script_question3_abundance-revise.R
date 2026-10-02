@@ -6,7 +6,7 @@ rm(list=ls()) # cleaning memory
 #setwd("c:/")
 library(lattice) # For fancy multipanel graphs
 library(glmmTMB)
-source("HighstatLibV7.R") # Function created by Zuur et al for some data exploration steps
+# source("HighstatLibV7.R") # Function created by Zuur et al; not included (copyrighted, Highland Statistics Ltd)
 
 # Import the data 
 HTrees4 <- read.table(file = "abundance.tree.control.mimic.new.txt",
@@ -36,8 +36,8 @@ dotchart(HTrees4$Abundance,
 # all good
 str(HTrees4)
 pairs(HTrees4[,c("Lat","Long","Aspect","Trees50", 
-                 "DistIsland", "DistReef", "WMI")],
-      lower.panel = panel.cor)
+                 "DistIsland", "DistReef", "WMI")])
+#      lower.panel = panel.cor) # panel.cor is from HighstatLibV7.R, not included (copyrighted)
 # Lat cant go with Long
 # Lat cant go with Trees50
 # Lat cant go with DistIsland
@@ -111,8 +111,8 @@ boxplot(WMI ~ factor(Treatment),
 # Not colinear
 
 MyVar <- c("Lat","Long", "Aspect", "Trees50", "DistIsland", "DistReef", "WMI", "Abundance")
-pairs(HTrees4[, MyVar],
-      lower.panel = panel.cor)
+pairs(HTrees4[, MyVar])
+#      lower.panel = panel.cor) # panel.cor is from HighstatLibV7.R, not included (copyrighted)
 # Abundance seems strongly negatively related to Latitude (or Tree50 or DistIsland)
 
 boxplot(Abundance ~ factor(Aspect), 

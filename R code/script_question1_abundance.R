@@ -16,7 +16,7 @@ rm(list=ls()) # cleaning memory
 # Set working directory
 #setwd("c:/")
 library(lattice)  # For fancy multipanel graphs
-source("HighstatLibV7.R") # Function created by Zuur et al for some data exploration steps
+# source("HighstatLibV7.R") # Function created by Zuur et al; not included (copyrighted, Highland Statistics Ltd)
 
 # Import the data 
 HTrees1 <- read.table(file = "abundance.tree.and.controls.txt",
@@ -50,8 +50,8 @@ dotchart(HTrees1$Abundance,
 
 #B Collinearity among predictors
 pairs(HTrees1[,c("Treatment","Lat","Long","Trees50", "DistIsland", 
-                "DistReef", "WMI")],
-      lower.panel = panel.cor)
+                "DistReef", "WMI")])
+#      lower.panel = panel.cor) # panel.cor is from HighstatLibV7.R, not included (copyrighted)
 # From here you gather that the following variables cannot go as predictors 
 # in the same model because they are highly correlated to each other:
 # Lat cant go with Long

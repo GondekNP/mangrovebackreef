@@ -18,7 +18,7 @@ HTrees2 <- read.table(file = "abundance.only.natural.trees.txt",
                     dec = ".")
 
 library(lattice)  # For fancy multipanel graphs
-source("HighstatLibV7.R") # Function created by Zuur et al for some data exploration steps
+# source("HighstatLibV7.R") # Function created by Zuur et al; not included (copyrighted, Highland Statistics Ltd)
 
 # explore the variables
 names(HTrees2)
@@ -47,8 +47,8 @@ dotchart(HTrees2$Abundance,
 
 #B Collinearity among predictors
 pairs(HTrees2[,c("TreePerimeter","Lat","Long", "DistIsland", 
-                "DistReef", "Trees50", "WMI")],
-      lower.panel = panel.cor)
+                "DistReef", "Trees50", "WMI")])
+#      lower.panel = panel.cor) # panel.cor is from HighstatLibV7.R, not included (copyrighted)
 # From here you gather that the following variables cannot go as predictors 
 # in the same model because they are highly correlated to each other:
 # Lat cant go with Long
@@ -99,8 +99,8 @@ boxplot(WMI ~ factor(Aspect),
 #C. Initial inspection of relationships Y vs X
 MyVar <- c("TreePerimeter","Lat","Long", "DistIsland", 
            "DistReef", "Trees50", "WMI", "Abundance")
-pairs(HTrees2[, MyVar],
-      lower.panel = panel.cor)
+pairs(HTrees2[, MyVar])
+#      lower.panel = panel.cor) # panel.cor is from HighstatLibV7.R, not included (copyrighted)
 # Abundance seems positively related to Tree Perimeter 
 # Abundance seems negatively but less strongly related to WMI
 # unnaffected by all other parameters
