@@ -5,7 +5,7 @@
 ###########################################################################################################
 # Modelling Shoaling as a function of Treatment 
 ###########################################################################################################
-dev.off()
+# dev.off()
 
 #setwd()
 require(ggplot2)
@@ -13,7 +13,7 @@ require(rcompanion)
 require(MASS)
 require(lattice)
 
-grouping <- read.table(file = "shoaling.tree.and.controls.txt",
+grouping <- read.table(file = "data/shoaling.tree.and.controls.txt",
                        header = TRUE,
                        dec = ".",
                        na.strings = "na")
@@ -48,7 +48,7 @@ xfactor
 group2=glm(xytab~xfactor, family = binomial("logit"))
 group2
 summary(group2)
-plot(group2)
+# plot(group2) # errors: model is fitted to only 2 rows
 
 group3 <- glm(Grouping ~ 1 + Treatment, data = grouping, family = binomial)
 summary(group3)
@@ -109,6 +109,7 @@ model_emm <- emmeans::emmeans(group_bayes, specs = "Treatment",
 # put in dataframe and merge with complete data, also need a numerical value for Grouping variable
 
 modstats = as.data.frame(summary(model_emm))
+modstats
 
 grouping$Groupingnum <- as.numeric(grouping$Grouping)-1
 

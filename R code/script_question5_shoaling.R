@@ -5,7 +5,7 @@
 ###########################################################################################################
 # Modelling Shoaling as a function of Treatment 
 ###########################################################################################################
-dev.off()
+# dev.off()
 
 
 require(ggplot2)
@@ -16,7 +16,7 @@ require(lmerTest)
 require(afex)
 ###script: penguin book chapter presence-absence and proportional data, glm for presence-absence data
 
-grouping <- read.table(file = "shoaling.only.natural.trees.txt",
+grouping <- read.table(file = "data/shoaling.only.natural.trees.txt",
                        header = TRUE,
                        dec = ".",
                        na.strings = "na")
@@ -191,7 +191,7 @@ p4 <- p4 + geom_jitter(data = grouping,
 p4
 p4 <- p4 + theme(axis.title.y = element_text("Grouping fish"), axis.title.x = element_text("Root system perimeter (m)"))
 p4 <- p4 + ylab("Grouping fish")
-p4 <- p4 + yxlab("Root system perimeter")
+p4 <- p4 + xlab("Root system perimeter")
 p4 <- p4 + scale_y_discrete(labels = c('Absent','Present'))
 p4 <- p4 + theme(text = element_text(size=2)) + theme_bw()
 
@@ -290,7 +290,7 @@ groupdist <- groupdist + geom_jitter(data = grouping,
 groupdist
 groupdist <- groupdist + theme(axis.title.y = element_text("Grouping fish"), axis.title.x = element_text("Root system perimeter (m)"))
 groupdist <- groupdist + ylab("Grouping fish")
-groupdist <- groupdist + yxlab("Distance to reef crest (m)")
+groupdist <- groupdist + xlab("Distance to reef crest (m)")
 groupdist <- groupdist + scale_y_discrete(labels = c('Absent','Present'))
 groupdist <- groupdist + theme(text = element_text(size=2)) + theme_bw()
 

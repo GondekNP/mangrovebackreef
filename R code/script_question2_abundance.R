@@ -6,14 +6,14 @@
 # Modelling Fish abundance as a function of tree perimeter, aspect, and others
 ###########################################################################################################
 
-dev.off()
+# dev.off()
 rm(list=ls()) # cleaning memory
 
 # Set working directory
-setwd("~/mangrove paper/fish focus/data and scripts")
+#setwd("~/mangrove paper/fish focus/data and scripts")
 
 # Import the data 
-HTrees2 <- read.table(file = "abundance.only.natural.trees.txt",
+HTrees2 <- read.table(file = "data/abundance.only.natural.trees.txt",
                     header = TRUE,
                     dec = ".")
 
@@ -161,7 +161,7 @@ mod1 <-glm(Abundance ~ TreePerimeter + Aspect + DistIsland + DistReef + WMI + Tr
            data = HTrees2)
 summary(mod1)
 
-dev.off()
+# dev.off()
 # model checks and validation:
 E1 <- resid(mod1, type = "pearson")
 F1 <- fitted(mod1)
@@ -606,7 +606,7 @@ periplot <- ggplot(dat1, aes(x = x, y = predicted)) +
 periplot
 
 dat2 <- ggpredict(mod2, interval = "confidence", terms = c("Aspect"))
-plot(dat2, add.data=TRUE)
+plot(dat2, show_data = TRUE)
 
 aspectplot <- ggplot(dat2, aes(x = x, y = predicted)) +
   geom_jitter(data = HTrees2, aes(y = Abundance, x = Aspect), colour = "forestgreen", 

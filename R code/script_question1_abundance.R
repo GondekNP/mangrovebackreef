@@ -6,7 +6,7 @@
 ###########################################################################################################
 # Modelling Fish abundance as a function of Treatment and others
 ###########################################################################################################
-dev.off()
+# dev.off()
 
 require(glmmTMB)
 require(rockchalk)
@@ -19,7 +19,7 @@ library(lattice)  # For fancy multipanel graphs
 # source("HighstatLibV7.R") # Function created by Zuur et al; not included (copyrighted, Highland Statistics Ltd)
 
 # Import the data 
-HTrees1 <- read.table(file = "abundance.tree.and.controls.txt",
+HTrees1 <- read.table(file = "data/abundance.tree.and.controls.txt",
                      header = TRUE,
                      dec = ".")
 
@@ -430,8 +430,8 @@ require(ggiraphExtra)
 require(plyr)
 
 dat1 <- ggpredict(mod1, interval = 'confidence', terms = c("Treatment"))
-dev.off()
-plot(dat1, add.data = TRUE)
+# dev.off()
+plot(dat1, show_data = TRUE)
 
 treatplot <- ggplot(dat1, aes(x = x, y = predicted)) +
   geom_jitter(data = filter(HTrees1, Treatment=="a.natural.tree"), aes(y = Abundance, x = Treatment), 

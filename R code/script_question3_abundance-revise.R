@@ -9,9 +9,10 @@ library(glmmTMB)
 # source("HighstatLibV7.R") # Function created by Zuur et al; not included (copyrighted, Highland Statistics Ltd)
 
 # Import the data 
-HTrees4 <- read.table(file = "abundance.tree.control.mimic.new.txt",
+HTrees4 <- read.table(file = "data/abundance.tree.control.mimic.new.txt",
                       header = TRUE,
-                      dec = ".")
+                      dec = ".",
+                      stringsAsFactors = TRUE) # the default before R 4.0; pairs() below needs Aspect as a factor
 # explore the variables
 names(HTrees4)
 
@@ -408,7 +409,7 @@ print("Structure of HTrees4:")
 print(str(HTrees4))
 
 # Plot the ggpredict output
-plot(dat5, add.data = TRUE)
+plot(dat5, show_data = TRUE)
 
 # Ensure Treatment is a factor in HTrees4
 HTrees4$Treatment <- as.factor(HTrees4$Treatment)
