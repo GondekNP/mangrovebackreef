@@ -18,10 +18,10 @@
 ### Reproducing the analysis
 Open the repo in VS Code and choose **Reopen in Container** (or use GitHub Codespaces). The [devcontainer](.devcontainer/) builds on [Rocker](https://rocker-project.org/) (R 4.5) and runs `renv::restore()` to install the exact package versions recorded in [`renv.lock`](renv.lock). Outside a container, run `renv::restore()` from the repo root.
 
-Run everything from the repo root (so `.Rprofile` activates the renv library):
+Run everything with:
 
 ```sh
-Rscript run_all.R
+./run_all.sh
 ```
 
 This runs each script in `R code/` in a fresh R session and writes its console output (`.txt`) and figures (`.pdf`) to `output/`, along with `sessionInfo.txt`. Scripts can also be run individually from the repo root.
