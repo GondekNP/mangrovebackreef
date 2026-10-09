@@ -1,0 +1,65 @@
+---
+title: "Derivations — running notes"
+format:
+  html:
+    toc: true
+---
+
+A running place for pencil-and-paper work. Each section has an empty display-math block to fill in. Equation numbers refer to Hefley et al. (2017).
+
+## Fri — Model equations (Q1–Q5)
+
+<!-- TODO: write each final model as an equation, including the NB1 variance mu(1 + phi). -->
+
+$$
+% TODO: Q1 model
+$$
+
+## Fri — Eq. 7 from the first-order form
+
+<!-- TODO: start from E[Z alpha] = 0 and Var(Z alpha) = sigma^2 Z Z'; arrive at Eq. 7. -->
+
+$$
+% TODO: derivation of Eq. 7
+$$
+
+## Fri — ZZ′ for a 6 × 3 indicator Z → Eq. 9
+
+<!-- TODO: write out the 6 x 3 indicator Z, multiply out Z Z', match Eq. 9. -->
+
+$$
+% TODO: Z, Z Z', and the match to Eq. 9
+$$
+
+## Fri — Exact vs Laplace
+
+<!-- TODO: explain in words (and math if needed) why integrating alpha out is exact
+     in the Gaussian case but needs a Laplace approximation in a GLMM. -->
+
+## Sat — QΛ^{1/2}(QΛ^{1/2})′ = R
+
+<!-- TODO: prove it using Q'Q = I (after the numerical check in 02-sat-toy1d.qmd). -->
+
+$$
+% TODO: proof
+$$
+
+## Sat — Eq. 15 from the conditional-normal formula
+
+<!-- TODO: state the conditional-normal formula and derive the BLUP (Eq. 15). -->
+
+$$
+% TODO: derivation of Eq. 15
+$$
+
+## Mon — Frisch–Waugh–Lovell
+
+<!-- TODO: state and prove FWL; connect to DistReef vs a spatial basis. -->
+
+$$
+% TODO: FWL
+$$
+
+## Mon — Notes on Hodges & Reich (2010)
+
+<!-- TODO: key points on spatial confounding. -->

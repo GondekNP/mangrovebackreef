@@ -1,0 +1,112 @@
+---
+title: "Sun Oct 11 — Double dip: stage 2 (add space)"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Put the mangrove design onto a map, see how close DistReef is to being a coordinate, then simulate a spatial truth and fit it three ways. This is where the two papers meet: the location intercept becomes one basis-function choice among several.
+
+## Checklist
+
+- [ ] Build location coordinates in metres
+- [ ] Collinearity check: DistReef ~ x + y, and DistReef ~ first 5 eigenvectors of R(ϕ)
+- [ ] Write `sim_stage2()` in `sim/stage2.R` (exponential, ϕ = 250 m, small nugget)
+- [ ] Fit three models: iid, glmmTMB `exp()`, mgcv `s(x, y)`
+- [ ] Scenario B: field partly aligned with DistReef
+- [ ] Stretch: DIY eigenvector-basis fit
+
+```{r}
+#| label: setup
+source("../sim/_load.R")
+library(glmmTMB)
+library(mgcv)
+HTrees1 <- read.table(file.path(data_dir, "abundance.tree.and.controls.txt"),
+                      header = TRUE, dec = ".")
+```
+
+## 1. Coordinates in metres
+
+One point per LocationID: the mean of the tree plot and the control plot, projected to metres.
+
+**Done when:** a 24-row table of LocationID, x, y, plus a map that looks like the study site.
+
+```{r}
+#| label: coords
+# TODO: average Lat/Long per LocationID and convert to metres (x, y).
+# TODO: plot the 24 locations, coloured by DistReef.
+```
+
+## 2. Collinearity check
+
+R² of DistReef on x + y (expect ≈ 0.975), and on the first 5 eigenvectors of R(ϕ) (expect ≈ 0.76–0.93).
+
+**Done when:** both R² values are in hand and you know which ϕ values give the low and high ends.
+
+```{r}
+#| label: collinearity
+# TODO: R^2 of DistReef ~ x + y.
+# TODO: R^2 of DistReef ~ first 5 eigenvectors of R(phi), for a few phi values.
+```
+
+## 3. Write `sim_stage2()`
+
+In `sim/stage2.R`: an exponential-covariance spatial field (ϕ = 250 m, small nugget) in place of the iid a_j. Otherwise the same as stage 1.
+
+**Done when:** one simulated data set, and a map of the field values at the 24 locations.
+
+```{r}
+#| label: sim-one
+# TODO: call sim_stage2() once (scenario A) and map the field.
+```
+
+## 4. Fit three models
+
+- The authors' iid model (`1 | LocationID`)
+- glmmTMB with `exp(pos + 0 | group)`
+- mgcv with `s(x, y, k = 10)` + `s(LocationID, bs = "re")`, `family = nb()`. Note that this is **NB2**, not NB1.
+
+**Done when:** a table of Treatment and DistReef estimates ± SE from all three fits to the same data set.
+
+```{r}
+#| label: fit-three
+# TODO: fit the iid model.
+# TODO: fit the glmmTMB exp() model.
+# TODO: fit the mgcv model (remember: NB2).
+# TODO: tabulate Treatment and DistReef estimates and SEs.
+```
+
+## 5. Scenario B: field aligned with DistReef
+
+**Done when:** the same table as §4, for a field partly aligned with DistReef.
+
+```{r}
+#| label: scenario-b
+# TODO: simulate scenario B and refit the three models.
+```
+
+## 6. Stretch: DIY basis
+
+Fit with the leading eigenvectors of R(ϕ) as the basis (Hefley-style).
+
+**Done when:** the DIY fit's estimates are added to the §4 table.
+
+```{r}
+#| label: diy-basis
+# TODO: build Z from the leading eigenvectors of R(phi) and fit.
+```
+
+## In your own words
+
+1. Why should Treatment hold up under a spatial truth while DistReef is vulnerable?
+
+    <br><br><br>
+
+2. What does an R² of ≈ 0.975 for DistReef ~ x + y mean for what this design can learn about DistReef?
+
+    <br><br><br>
+
+3. Does switching NB1 → NB2 in mgcv matter for this comparison? How would you tell?
+
+    <br><br><br>

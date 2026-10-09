@@ -1,0 +1,94 @@
+---
+title: "The basis function approach for modeling autocorrelation"
+subtitle: "Hefley et al. 2017, Ecology — ESPM 215, Oct 14"
+format: live-revealjs
+engine: knitr
+
+# Packages installed into webR when the deck loads (from repo.r-wasm.org).
+# TODO: list the packages your live cells need, and preload them on the title slide.
+webr:
+  packages: []
+---
+
+{{< include ../../_extensions/r-wasm/live/_knitr.qmd >}}
+
+## Title
+
+::: notes
+TODO: one-line opener — one framework behind random effects, splines and spatial models.
+:::
+
+## Basis functions as one framework
+
+::: notes
+TODO: Z alpha as the common thread.
+:::
+
+## First- vs second-order
+
+<!-- TODO: Eq. 7, using the mangrove Z. -->
+
+::: notes
+TODO: same model, two specifications.
+:::
+
+## The mangrove intercept as a basis model
+
+::: notes
+TODO: (1 | LocationID) as an indicator basis.
+:::
+
+## Adding a spatial field
+
+```{r}
+#| label: stage2-results
+#| eval: false
+# Flip eval to true once results/ has the stage-2 replicates.
+# TODO: readRDS() the stage-2 tables from ../results/ and compare the three models.
+```
+
+::: notes
+TODO: what changes for Treatment vs DistReef under a spatial truth.
+:::
+
+## DistReef is almost a coordinate
+
+```{r}
+#| label: collinearity
+#| eval: false
+# Flip eval to true once results/ has the collinearity check.
+# TODO: readRDS() the R^2 results from ../results/.
+```
+
+::: notes
+TODO: the R^2 numbers and what they mean for identifiability.
+:::
+
+## What the bubble plot can and can't detect
+
+```{r}
+#| label: morans-detection
+#| eval: false
+# Flip eval to true once results/ has the Moran's I detection rates.
+# TODO: readRDS() the detection-rate table from ../results/.
+```
+
+```{webr}
+# TODO: live cell placeholder.
+```
+
+::: notes
+TODO: detection rate of Moran's I on the iid intercepts.
+:::
+
+## Backup: why ϕ is poorly identified with 24 locations
+
+::: notes
+TODO: spread of phi-hat; few pairs at short distances.
+:::
+
+## Discussion
+
+::: notes
+TODO: discussion questions (from Monday's draft).
+:::

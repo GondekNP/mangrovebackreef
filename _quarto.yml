@@ -1,0 +1,13 @@
+# Quarto project at the repo root so decks in slides/ can reach data/ and every
+# document can find _extensions/ (quarto-live). Only slides/ and espm215/ are
+# rendered; README.md and R code/ are left alone.
+project:
+  type: default
+  render:
+    - slides/*.qmd
+    - espm215/homework/*.qmd
+    - espm215/decks/*.qmd
+    - espm215/notes/*.qmd
+  preview:
+    port: 4200
+    browser: false

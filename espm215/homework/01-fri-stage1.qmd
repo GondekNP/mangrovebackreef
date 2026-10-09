@@ -1,0 +1,113 @@
+---
+title: "Fri Oct 9 — Orient, then run stage 1 (no space yet)"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Get fluent in the authors' models, then simulate from `mod1` on the real design and check whether glmmTMB recovers what you put in. Today has no spatial structure: the location intercepts are iid. Finish with Hefley's equivalent specifications, so you can see the location intercept as the simplest basis-function model.
+
+## Checklist
+
+- [ ] Map Q1–Q5 to scripts and write each model as an equation
+- [ ] Save β, σ_LocationID and φ from `mod1` to `results/`
+- [ ] Write `sim_stage1()` in `sim/stage1.R`
+- [ ] Refit 500 replicates; summarize bias, coverage, spread of σ̂
+- [ ] Compare against a plain `glm` that ignores location
+- [ ] Read Hefley, Model Specifications + Equivalent Specifications (Eqs. 4–13)
+- [ ] Derivation: Eq. 7 and Eq. 9 (in `notes/derivations.qmd`)
+
+```{r}
+#| label: setup
+source("../sim/_load.R")
+library(glmmTMB)
+HTrees1 <- read.table(file.path(data_dir, "abundance.tree.and.controls.txt"),
+                      header = TRUE, dec = ".")
+```
+
+## 1. Map the questions to the models
+
+Go through `R code/script_question1_abundance.R` … `script_question5_shoaling.R`. For each question, record the data file, the final model, and the family. Write each model as an equation, including the NB1 variance μ(1 + φ).
+
+**Done when:** a table of Q1–Q5 → script → model, plus one equation per model.
+
+| Q | Script | Data file | Final model | Family |
+|---|--------|-----------|-------------|--------|
+| 1 | | | | |
+| 2 | | | | |
+| 3 | | | | |
+| 4 | | | | |
+| 5 | | | | |
+
+<!-- TODO: write the model equations here (or in notes/derivations.qmd). -->
+
+## 2. Save the stage-1 truth
+
+Fit the final `mod1` (Treatment + DistReef + (1 | LocationID), `nbinom1`) and save β, σ_LocationID and φ to `results/`.
+
+**Done when:** `results/` contains an .rds with the three parameter sets, and you can read it back.
+
+```{r}
+#| label: save-truth
+# TODO: refit mod1 exactly as in script_question1_abundance.R.
+# TODO: extract beta, sigma_LocationID and phi; saveRDS() to results_dir.
+```
+
+## 3. Write `sim_stage1()`
+
+In `sim/stage1.R`: a_j ~ N(0, σ²) for 24 locations, η = Xβ + a[location], NB1 counts, on the real design.
+
+**Done when:** one call returns a data frame shaped like `HTrees1` with simulated `Abundance`, and its summary looks like the real data.
+
+```{r}
+#| label: sim-one
+# TODO: call sim_stage1() once and compare it with HTrees1 (range, zeros, mean by Treatment).
+```
+
+## 4. Refit 500 replicates
+
+**Done when:** a table of bias and 95% CI coverage for each β, plus a histogram of σ̂_LocationID with the true value marked. Saved to `results/`.
+
+```{r}
+#| label: replicates
+# TODO: loop 500 x (simulate -> refit mod1 formula), collect estimates and CIs.
+# TODO: summarize bias, coverage, and the spread of sigma-hat; saveRDS() the table.
+```
+
+## 5. What happens if you ignore location?
+
+Fit a plain `glm` (NB, no random effect) to the same replicates. Compare the SEs for Treatment and DistReef with the GLMM's.
+
+**Done when:** a side-by-side table of SEs (and coverage) for both coefficients under both models.
+
+```{r}
+#| label: glm-compare
+# TODO: fit the no-location glm to each replicate; tabulate SEs and coverage vs the GLMM.
+```
+
+## 6. Read Hefley: Model Specifications and Equivalent Specifications
+
+Read Eqs. 4–13. Note where the mangrove random intercept fits: which Z, which α, which first- or second-order form.
+
+**Done when:** you can say in one sentence which of Eqs. 4–13 *is* `mod1`.
+
+## 7. Derivation → `notes/derivations.qmd`
+
+Get Eq. 7 from E[Zα] = 0 and Var(Zα) = σ²ZZ′. Multiply out ZZ′ for a 6 × 3 indicator Z to recover Eq. 9. Explain why integrating α out is exact here but needs a Laplace approximation in a GLMM.
+
+**Done when:** the Fri section of `notes/derivations.qmd` is filled in.
+
+## In your own words
+
+1. Why does the location intercept protect the Treatment estimate?
+
+    <br><br><br>
+
+2. Why does ignoring location shrink the DistReef SE?
+
+    <br><br><br>
+
+3. What does the spread of σ̂ with 24 locations tell you about how much to trust the authors' variance component?
+
+    <br><br><br>

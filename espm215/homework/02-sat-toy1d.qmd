@@ -1,0 +1,82 @@
+---
+title: "Sat Oct 10 — Hefley's machinery on a 1-D toy"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Reproduce Hefley's 1-D examples yourself, so the three specifications (second-order + BLUP, eigenvector basis, kernel basis) are things you've built rather than equations you've read. Your own version of Fig. 2 is the deliverable.
+
+## Checklist
+
+- [ ] Get Supporting Information Appendices S1–S5; skim Examples 1–3
+- [ ] Simulate a 1-D Gaussian-correlation process in `sim/toy1d.R`
+- [ ] Fit three ways and plot against the truth (my Fig. 2)
+- [ ] Derivation: QΛ^{1/2}(QΛ^{1/2})′ = R, numerically then by proof
+- [ ] Derivation: Eq. 15 from the conditional-normal formula
+
+```{r}
+#| label: setup
+source("../sim/_load.R")
+library(ggplot2)
+```
+
+## 1. Get the appendices
+
+Download Appendices S1–S5 from the Ecology Supporting Information. Skim Examples 1–3 and note which R code corresponds to which figure.
+
+**Done when:** the appendix PDFs and code are saved locally, and you know which appendix covers Fig. 2.
+
+## 2. Simulate the 1-D process
+
+In `sim/toy1d.R`: simulate a 1-D process from a Gaussian correlation function (Eq. 14).
+
+**Done when:** a plot of one simulated realization over the grid.
+
+```{r}
+#| label: simulate
+# TODO: simulate one 1-D realization from the Eq. 14 correlation function and plot it.
+```
+
+## 3. Fit three ways
+
+1. Second-order model with the BLUP (Eq. 15)
+2. Eigenvector basis Z = QΛ^{1/2}
+3. Gaussian kernel basis with 10–17 knots
+
+**Done when:** one figure with the truth and all three fitted curves (my Fig. 2).
+
+```{r}
+#| label: fit-three
+# TODO: fit the second-order model and compute the BLUP (Eq. 15).
+# TODO: fit with the eigenvector basis Z = Q Lambda^{1/2}.
+# TODO: fit with a Gaussian kernel basis (try 10-17 knots).
+# TODO: plot all three against the truth.
+```
+
+## 4. Derivations → `notes/derivations.qmd`
+
+- Check numerically that QΛ^{1/2}(QΛ^{1/2})′ = R, then prove it using Q′Q = I.
+- Derive Eq. 15 from the conditional-normal formula.
+
+**Done when:** the numerical check below passes and the Sat section of `notes/derivations.qmd` is filled in.
+
+```{r}
+#| label: check-eigen
+# TODO: numerically compare Q Lambda^{1/2} (Q Lambda^{1/2})' with R.
+```
+
+## In your own words
+
+1. What is the difference between first-order and second-order specifications?
+
+    <br><br><br>
+
+2. When would you prefer each?
+
+    <br><br><br>
+
+3. How many knots were enough, and how would you decide that without knowing the truth?
+
+    <br><br><br>

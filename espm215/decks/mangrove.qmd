@@ -1,0 +1,68 @@
+---
+title: "Individual mangrove trees as reef fish habitat"
+subtitle: "von Hammerstein et al. 2024, Sci Rep — ESPM 215, Oct 14"
+format: live-revealjs
+engine: knitr
+
+# Packages installed into webR when the deck loads (from repo.r-wasm.org).
+# TODO: list the packages your live cells need, and preload them on the title slide.
+webr:
+  packages: []
+---
+
+{{< include ../../_extensions/r-wasm/live/_knitr.qmd >}}
+
+## Title
+
+::: notes
+TODO: one-line opener — what the paper asks and why backreef mangroves are odd.
+:::
+
+## The paired design
+
+::: notes
+TODO: 24 locations, tree vs control plot at each — why pairing matters.
+:::
+
+## The model
+
+<!-- TODO: equation for mod1 (Treatment + DistReef + (1 | LocationID), NB1). -->
+
+::: notes
+TODO: walk through each term of the equation.
+:::
+
+## Why the random intercept matters
+
+```{r}
+#| label: stage1-results
+#| eval: false
+# Flip eval to true once results/ has the stage-1 replicates.
+# TODO: readRDS() the stage-1 summary from ../results/ and show bias / coverage / SE comparison.
+```
+
+::: notes
+TODO: what the stage-1 replicates show vs the no-location glm.
+:::
+
+## What the authors checked about space
+
+::: notes
+TODO: describe the bubble plot / residual check the authors used.
+:::
+
+## Teaser: are the intercepts independent?
+
+```{webr}
+# TODO: live cell placeholder.
+```
+
+::: notes
+TODO: set up the hand-off to the Hefley discussion.
+:::
+
+## Discussion
+
+::: notes
+TODO: discussion questions (from Monday's draft).
+:::
