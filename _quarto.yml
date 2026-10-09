@@ -5,8 +5,7 @@ project:
   type: default
   render:
     - slides/*.qmd
-    - espm215/homework/*.qmd
-    - espm215/decks/*.qmd
+    - espm215/stages/*.qmd
     - espm215/notes/*.qmd
   preview:
     port: 4200

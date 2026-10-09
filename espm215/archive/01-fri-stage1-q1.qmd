@@ -38,7 +38,8 @@ Go through `R code/script_question1_abundance.R` … `script_question5_shoaling.
 | 2 | | | | |
 | 3 | | | | |
 | 4 | | | | |
-| 5 | | | | |
+| 5 | | | | |+
+
 
 <!-- TODO: write the model equations here (or in notes/derivations.qmd). -->
 
@@ -50,8 +51,15 @@ Fit the final `mod1` (Treatment + DistReef + (1 | LocationID), `nbinom1`) and sa
 
 ```{r}
 #| label: save-truth
-# TODO: refit mod1 exactly as in script_question1_abundance.R.
-# TODO: extract beta, sigma_LocationID and phi; saveRDS() to results_dir.
+library(glmmTMB)
+HTrees1 = HTrees1 |> mutate(Treatment = factor(Treatment))
+mod1 <- glmmTMB(Abundance ~ Treatment + Trees50 + WMI + DistReef + DistIsland
+                + (1 | LocationID),
+                family = nbinom1(),
+                data = HTrees1)
+
+saveRDS(mod1, "/workspaces/mangrovebackreef/espm215/results/stage1_mod1.RDS")
+
 ```
 
 ## 3. Write `sim_stage1()`

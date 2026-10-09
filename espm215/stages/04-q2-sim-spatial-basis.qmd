@@ -1,0 +1,104 @@
+---
+title: "Stage 4 — Q2 simulated + nonlinearity + space: Hefley basis functions"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Add a spatial field on top of the stage-3 truth, then account for it with Hefley-style basis functions. Ramp the field from weak to strongly spatial (including a gradient aligned with DistReef), and show which estimates survive, which don't, and whether the authors' diagnostics would notice.
+
+## Checklist
+
+- [ ] Reading: Hefley, Model Specifications + Equivalent Specifications (Eqs. 4–13)
+- [ ] The Q2 location intercept as a basis model (ZZ′)
+- [ ] Collinearity: location-level covariates vs space
+- [ ] Write `sim_spatial()` in `sim/sim_spatial.R`
+- [ ] Fit the stage-3 GAM (no space), then add a spatial basis
+- [ ] Ramp: spatial variance and range; DistReef-aligned scenario
+- [ ] Diagnostics: Moran's I and bubble-plot detection rate
+
+```{r}
+#| label: setup
+source("../sim/_load.R")
+library(glmmTMB)
+library(mgcv)
+HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
+                      header = TRUE, dec = ".")
+```
+
+## 1. Reading: Hefley's specifications
+
+Read Model Specifications and Equivalent Specifications (Eqs. 4–13). Write out the Q2 indicator Z (48 × 24) in words, and multiply out ZZ′ for a small piece of it in `notes/derivations.qmd`.
+
+**Done when:** you can say which of Eqs. 4–13 *is* `mod2`'s random intercept, and what changes when Var(α) stops being σ²I.
+
+## 2. Collinearity with space
+
+How much of TreePerimeter and DistReef is explained by the coordinates, and by the leading eigenvectors of R(ϕ) for a few ϕ?
+
+**Done when:** R² values for each covariate, and a sentence on which coefficient a spatial basis will compete with.
+
+```{r}
+#| label: collinearity
+# TODO: R^2 of each location-level covariate on x + y and on the leading eigenvectors of R(phi).
+```
+
+## 3. Write `sim_spatial()`
+
+In `sim/sim_spatial.R`: the stage-3 truth plus a spatial field at the 24 locations. Covariance family, variance and range are your call, as arguments. Include a scenario where the field is partly aligned with DistReef.
+
+**Done when:** a map of one simulated field, and one data set.
+
+```{r}
+#| label: sim-one
+# TODO: call sim_spatial() once; map the field at the 24 locations.
+```
+
+## 4. Fit: ignore space, then a Hefley basis
+
+1. The stage-3 GAM (iid location intercept, no space)
+2. The same plus a spatial basis: leading eigenvectors of R(ϕ), a kernel basis on knots, or `s(x, y)` treated as a basis (your choice; justify it)
+
+**Done when:** a table of Aspect, TreePerimeter and DistReef estimates ± SE from both fits to the same data set.
+
+```{r}
+#| label: fit
+# TODO: fit the stage-3 GAM; fit it again with the spatial basis; tabulate.
+```
+
+## Ramp: from site variance to a spatial gradient
+
+Sweep the spatial variance and range from weak to strongly spatial, with and without DistReef alignment.
+
+**Done when:** a figure of bias and coverage for each coefficient (no space vs basis) against the ramp, saved to `results/`.
+
+```{r}
+#| label: ramp
+# TODO: sweep spatial variance/range x alignment scenario; save the ramp table to results_dir.
+```
+
+## Diagnostics for the talk
+
+Under each truth, fit the no-space model and run the authors' check: the bubble plot, plus Moran's I on the intercepts and on residuals. Record the detection rate across the ramp, and compare with stage 2's false-positive rate. (Needs `spdep` or `ape`; see README.)
+
+**Done when:** a detection-rate figure and one example bubble plot per ramp level, saved to `results/`.
+
+```{r}
+#| label: diagnostics
+# TODO: Moran's I detection rate across the ramp; example bubble plots.
+```
+
+## In your own words
+
+1. Why does Aspect hold up under a spatial truth while DistReef is vulnerable?
+
+    <br><br><br>
+
+2. With 24 locations, how well can you learn the range of the field? What does that mean for choosing the basis?
+
+    <br><br><br>
+
+3. Would the authors' bubble plot have caught the spatial gradient? At what strength?
+
+    <br><br><br>

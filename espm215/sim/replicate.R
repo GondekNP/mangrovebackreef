@@ -1,12 +1,13 @@
-# Replicate stage 2 and test the authors' bubble-plot diagnostic.
-# Used by homework/04-mon-replicates.qmd.
+# Shared replicate machinery for stages 2-4.
 
-# TODO: write a loop over 200-500 replicates per scenario that calls
-#   sim_stage2() and the fit helpers, and collects Treatment and DistReef
-#   estimates, SEs and CI coverage for each model.
+# TODO: write a replicate loop: for each value of a ramp parameter, simulate
+#   (sim_glmm / sim_nonlinear / sim_spatial), fit the stage's models, and
+#   collect estimates, SEs, CI coverage and the variance components.
 
-# TODO: save each scenario's table to results/ as .rds
-#   (e.g. file.path(results_dir, "stage2_scenarioA.rds")).
+# TODO: write the diagnostics collected per replicate:
+#   - sigma-hat on the boundary (stage 2)
+#   - Moran's I on the 24 random intercepts and on residuals (stages 2 and 4).
+#     Needs spdep or ape; neither is installed (see README).
 
-# TODO: write the Moran's I check on the 24 iid random intercepts and record
-#   the detection rate. Needs spdep or ape; neither is installed (see README).
+# TODO: save each stage's replicate table to results/ as .rds
+#   (e.g. file.path(results_dir, "stage2_ramp.rds")).

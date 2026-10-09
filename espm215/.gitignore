@@ -1,5 +1,6 @@
 # Simulation outputs are regenerated from sim/; keep the folder, not the files.
 results/*.rds
+results/*.RDS
 
 # Rendered Quarto output
 *.html

@@ -5,61 +5,48 @@ format:
     toc: true
 ---
 
-A running place for pencil-and-paper work. Each section has an empty display-math block to fill in. Equation numbers refer to Hefley et al. (2017).
+A running place for pencil-and-paper work, organized by stage. Each section has an empty display-math block to fill in. Equation numbers refer to Hefley et al. (2017).
 
-## Fri — Model equations (Q1–Q5)
+## Stage 1 — Q2 `mod2` as an equation
 
-<!-- TODO: write each final model as an equation, including the NB1 variance mu(1 + phi). -->
-
-$$
-% TODO: Q1 model
-$$
-
-## Fri — Eq. 7 from the first-order form
-
-<!-- TODO: start from E[Z alpha] = 0 and Var(Z alpha) = sigma^2 Z Z'; arrive at Eq. 7. -->
+<!-- TODO: mod2 with the NB1 variance mu(1 + phi). -->
 
 $$
-% TODO: derivation of Eq. 7
+% TODO: mod2
 $$
 
-## Fri — ZZ′ for a 6 × 3 indicator Z → Eq. 9
+## Stage 3 — A GAM smooth as a penalized basis
 
-<!-- TODO: write out the 6 x 3 indicator Z, multiply out Z Z', match Eq. 9. -->
-
-$$
-% TODO: Z, Z Z', and the match to Eq. 9
-$$
-
-## Fri — Exact vs Laplace
-
-<!-- TODO: explain in words (and math if needed) why integrating alpha out is exact
-     in the Gaussian case but needs a Laplace approximation in a GLMM. -->
-
-## Sat — QΛ^{1/2}(QΛ^{1/2})′ = R
-
-<!-- TODO: prove it using Q'Q = I (after the numerical check in 02-sat-toy1d.qmd). -->
+<!-- TODO: write a smooth as Z alpha with a penalty; what Z, alpha and the penalty are in your GAM.
+     Same for s(LocationID, bs = "re"). -->
 
 $$
-% TODO: proof
+% TODO: smooth as a basis
 $$
 
-## Sat — Eq. 15 from the conditional-normal formula
+## Stage 4 — Hefley Eq. 7 and the Q2 indicator Z
 
-<!-- TODO: state the conditional-normal formula and derive the BLUP (Eq. 15). -->
+<!-- TODO: from E[Z alpha] = 0 and Var(Z alpha) = sigma^2 Z Z' to Eq. 7; write Z for Q2
+     (2 rows per location) and multiply out Z Z' for a small piece. -->
 
 $$
-% TODO: derivation of Eq. 15
+% TODO: Eq. 7 and Z Z'
 $$
 
-## Mon — Frisch–Waugh–Lovell
+## Stage 4 — Spatial basis: QΛ^{1/2} and the BLUP
 
-<!-- TODO: state and prove FWL; connect to DistReef vs a spatial basis. -->
+<!-- TODO: show Q Lambda^{1/2} (Q Lambda^{1/2})' = R using Q'Q = I;
+     derive Eq. 15 from the conditional-normal formula. -->
+
+$$
+% TODO: eigen basis and Eq. 15
+$$
+
+## Stage 4 — Frisch–Waugh–Lovell and spatial confounding
+
+<!-- TODO: state FWL; connect it to DistReef vs a spatial basis.
+     Notes on Hodges & Reich (2010). -->
 
 $$
 % TODO: FWL
 $$
-
-## Mon — Notes on Hodges & Reich (2010)
-
-<!-- TODO: key points on spatial confounding. -->

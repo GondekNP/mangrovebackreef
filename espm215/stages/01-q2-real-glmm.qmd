@@ -1,0 +1,95 @@
+---
+title: "Stage 1 — Q2 real data: the authors' GLMM"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Get fluent in Q2's `mod2` (abundance at natural trees ~ TreePerimeter + Aspect + DistReef + (1 | LocationID), NB1), reproduce the authors' diagnostics, and save everything later stages simulate from: the truth (β, σ, φ), the design, and the location coordinates. This is the baseline every later stage is compared against.
+
+## Checklist
+
+- [ ] Write `mod2` as an equation
+- [ ] Refit `mod2` and reproduce the authors' diagnostics
+- [ ] Classify terms: within-location vs location-level
+- [ ] Build the 24 location coordinates in metres
+- [ ] Save truth, design and coordinates to `results/`
+
+```{r}
+#| label: setup
+source("../sim/_load.R")
+library(glmmTMB)
+HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
+                      header = TRUE, dec = ".")
+```
+
+## 1. Write the model
+
+Read `mod2` in `R code/script_question2_abundance.R` (around line 232). Write it as an equation, including the NB1 variance μ(1 + φ).
+
+**Done when:** the equation is in the Stage 1 section of `notes/derivations.qmd`.
+
+## 2. Refit and reproduce the authors' diagnostics
+
+Refit `mod2` exactly as in the script. Reproduce what the authors checked: Pearson residuals vs fitted, the bubble plot of the random intercepts on the map (script, around line 306), and `drop1`.
+
+**Done when:** your estimates match `output/script_question2_abundance.txt` (σ̂ ≈ 0.41, φ ≈ 5.76), and the bubble plot is saved for the talk.
+
+```{r}
+#| label: refit
+# TODO: refit mod2 as in script_question2_abundance.R.
+# TODO: Pearson residuals vs fitted; drop1(mod2, test = "Chi").
+```
+
+```{r}
+#| label: bubble-plot
+# TODO: bubble plot of ranef(mod2) at the location coordinates (as the authors did).
+```
+
+## 3. Which terms live at which level?
+
+Each LocationID is one tree with two rows (Aspect e and s). Check which covariates vary within a location and which are constant within it.
+
+**Done when:** a short list. You should be able to say which coefficients the location intercept can and can't compete with.
+
+```{r}
+#| label: levels
+# TODO: check which covariates vary within LocationID.
+```
+
+## 4. Coordinates in metres
+
+One point per LocationID (the e and s rows share Lat/Long), projected to metres.
+
+**Done when:** a 24-row table of LocationID, x, y, and a map coloured by DistReef.
+
+```{r}
+#| label: coords
+# TODO: one Lat/Long per LocationID -> x, y in metres; map it.
+```
+
+## 5. Save for later stages
+
+**Done when:** `results/` holds the truth (β, σ_LocationID, φ), the design (one row per observation) and the coordinates, and you've read them back.
+
+```{r}
+#| label: save
+# TODO: saveRDS() truth, design and coords to results_dir.
+```
+
+## Diagnostics for the talk
+
+Pick the 1–2 figures from this stage that set up the baseline: what the authors saw, and what they concluded about space.
+
+**Done when:** the figures are saved to `results/` with names the talk can find.
+
+## In your own words
+
+1. What does σ̂ ≈ 0.41 mean in fish-count terms, compared with the Aspect effect?
+
+    <br><br><br>
+
+2. What did the authors' bubble plot let them conclude, and what couldn't it tell them?
+
+    <br><br><br>

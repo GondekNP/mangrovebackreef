@@ -1,0 +1,99 @@
+---
+title: "Stage 3 — Q2 simulated + nonlinearity: the GAM"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Add a nonlinear covariate effect to the stage-2 truth, motivated by the authors' Q5 shoaling GAMM. Show what the linear GLMM gets wrong and what a GAM recovers. Smooths are basis functions with a penalty, so this stage also sets up the Hefley framing for stage 4.
+
+## Checklist
+
+- [ ] Q5 motivation: why the authors moved to a GAM
+- [ ] Write `sim_nonlinear()` in `sim/sim_nonlinear.R`
+- [ ] Fit the (misspecified) GLMM
+- [ ] Fit the GAM
+- [ ] Ramp: strength of the nonlinearity
+- [ ] Reading: Hefley on splines as basis functions
+
+```{r}
+#| label: setup
+source("../sim/_load.R")
+library(glmmTMB)
+library(mgcv)
+HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
+                      header = TRUE, dec = ".")
+```
+
+## 1. Q5 motivation
+
+Read `R code/script_question5_shoaling.R` (around lines 51–117) and `output/script_question5_shoaling.txt`. Note what convinced the authors the relationship was nonlinear, the AIC comparison of smooth vs linear terms, and their choice of `s(TreePerimeter)` and a cyclic `s(DistReef, bs = "cc")`.
+
+**Done when:** 3–4 bullet notes, including whether a cyclic smooth in DistReef makes physical sense.
+
+## 2. Write `sim_nonlinear()`
+
+In `sim/sim_nonlinear.R`: the stage-2 truth with one covariate's linear term replaced by a nonlinear function. Choose which covariate and what shape. Give it a strength argument (0 = the stage-2 truth).
+
+**Done when:** a plot of the true curve, and one simulated data set.
+
+```{r}
+#| label: sim-one
+# TODO: call sim_nonlinear() once; plot the true curve and the simulated counts.
+```
+
+## 3. The misspecified GLMM
+
+Fit the `mod2` formula (linear terms) to the nonlinear data.
+
+**Done when:** you can show the misfit: residuals vs the covariate, and the bias in the linear coefficient.
+
+```{r}
+#| label: fit-glmm
+# TODO: fit the mod2 formula; residuals vs the nonlinear covariate.
+```
+
+## 4. The GAM
+
+mgcv with a smooth for the nonlinear covariate plus `s(LocationID, bs = "re")`. Note that `nb()` in mgcv is **NB2**, not NB1. Decide whether that matters (or try `glmmTMB` with a spline basis).
+
+**Done when:** the fitted smooth against the true curve, plus the other coefficients compared with the stage-2 fit.
+
+```{r}
+#| label: fit-gam
+# TODO: fit the GAM; plot fitted smooth vs truth.
+```
+
+## Ramp: strength of the nonlinearity
+
+Sweep the strength from 0 upward. At each value, compare the GLMM and the GAM.
+
+**Done when:** a figure of bias and coverage (GLMM vs GAM) against strength, and the GAM's EDF against strength, saved to `results/`.
+
+```{r}
+#| label: ramp
+# TODO: sweep strength; save the ramp table to results_dir.
+```
+
+## Diagnostics for the talk
+
+Residuals vs the covariate under the GLMM (where the curvature shows up), and the GAM's partial-effect plot against the truth.
+
+**Done when:** both figures saved to `results/`.
+
+## 5. Reading: smooths are basis functions
+
+Read the parts of Hefley et al. (2017) that treat splines as basis functions. Connect the GAM you just fit to Z α with a penalty. Notes go in `notes/derivations.qmd`.
+
+**Done when:** you can say what Z, α and the penalty are in your GAM.
+
+## In your own words
+
+1. What does the GLMM's residual plot show that its coefficient table hides?
+
+    <br><br><br>
+
+2. In what sense is `s(LocationID, bs = "re")` the same kind of object as `s(TreePerimeter)`?
+
+    <br><br><br>
