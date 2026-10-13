@@ -6,90 +6,284 @@ format:
 engine: knitr
 ---
 
-**Goal.** Get fluent in Q2's `mod2` (abundance at natural trees ~ TreePerimeter + Aspect + DistReef + (1 | LocationID), NB1), reproduce the authors' diagnostics, and save everything later stages simulate from: the truth (β, σ, φ), the design, and the location coordinates. This is the baseline every later stage is compared against.
-
-## Checklist
-
-- [ ] Write `mod2` as an equation
-- [ ] Refit `mod2` and reproduce the authors' diagnostics
-- [ ] Classify terms: within-location vs location-level
-- [ ] Build the 24 location coordinates in metres
-- [ ] Save truth, design and coordinates to `results/`
+**Goal.** Refit Q2's `mod2` (abundance at natural trees ~ TreePerimeter + Aspect + DistReef + (1 | LocationID), NB1) next to the same model without the location term, and ask one question: are the residuals spatially correlated? This is the baseline every later stage is compared against.
 
 ```{r}
 #| label: setup
 source("../sim/_load.R")
+library(tidyverse)
 library(glmmTMB)
+library(GGally)
+library(ggspatial)
+library(sf)
+library(spdep)
+
 HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
                       header = TRUE, dec = ".")
 ```
 
-## 1. Write the model
+## The data
 
-Read `mod2` in `R code/script_question2_abundance.R` (around line 232). Write it as an equation, including the NB1 variance μ(1 + φ).
-
-**Done when:** the equation is in the Stage 1 section of `notes/derivations.qmd`.
-
-## 2. Refit and reproduce the authors' diagnostics
-
-Refit `mod2` exactly as in the script. Reproduce what the authors checked: Pearson residuals vs fitted, the bubble plot of the random intercepts on the map (script, around line 306), and `drop1`.
-
-**Done when:** your estimates match `output/script_question2_abundance.txt` (σ̂ ≈ 0.41, φ ≈ 5.76), and the bubble plot is saved for the talk.
-
+First, let's see what we are working with:
 ```{r}
-#| label: refit
-# TODO: refit mod2 as in script_question2_abundance.R.
-# TODO: Pearson residuals vs fitted; drop1(mod2, test = "Chi").
+head(HTrees2)
+```
+Making `SizeCat` and `Aspect` into factors will make downstream analysis cleaner, so let's do it here:
+```{r}
+HTrees2 = HTrees2 |>
+  mutate(
+    SizeCat = as.factor(SizeCat),
+    Aspect = as.factor(Aspect)
+  )
 ```
 
-```{r}
-#| label: bubble-plot
-# TODO: bubble plot of ranef(mod2) at the location coordinates (as the authors did).
+Now, let's do a basic smellcheck for collinearity (how much do each variable covary with each other?) - if we have highly collinear data, our model won't know which variable to attribute variation to, and we may run into issues with model fit among other issues.
+```{r, fig.width=15, fig.height=12, message=FALSE}
+ggpairs(
+  data = HTrees2 |> select(!c('LocationID','Label', 'Lat', 'Long')),
+  upper = list(continuous = "cor", combo = "blank", discrete = "blank")
+)
 ```
 
-## 3. Which terms live at which level?
+From the above, it seems that:
 
-Each LocationID is one tree with two rows (Aspect e and s). Check which covariates vary within a location and which are constant within it.
+1) With respect to abundance, `TreePerimeter` has a large positive correlation (makes sense if we hypothesize they like structure, which we do) and `DistReef` has a strong negative correlation (also makes sense if we assume fish come from reef, so further away is worse).
+2) `DistReef` and `DistIsland` are collinear and correlation is negative - makes sense as we expect if you're closer to the reef you are probably farther from the island since the reef is not on the island. Likely we don't want to include both in a model together. If we use a rule of thumb, many of these covariates probably shouldn't be included together (`DistIsland` and `Trees50` for eg, `DistReef` and `WMI` for eg). Per the authors' comments:
 
-**Done when:** a short list. You should be able to say which coefficients the location intercept can and can't compete with.
-
-```{r}
-#| label: levels
-# TODO: check which covariates vary within LocationID.
+```
+# From here you gather that the following variables cannot go as predictors
+# in the same model because they are highly correlated to each other:
+# Lat cant go with Long
+# Lat cant go with DistIsland
+# Lat shouldnt go with DistReef
+# Long cant go with DistIsland
+# Long cant go with Trees50
+# DistIsland cant go with Trees50
+# DistReef cant go in with Trees 50
+# DistReef perhaps shouldn't go in with WMI (but correlation is low)
 ```
 
-## 4. Coordinates in metres
+3) Fortunately for us, `DistReef` and `TreePerimeter` are not collinear (ie, they are largely independent) which is great.
 
-One point per LocationID (the e and s rows share Lat/Long), projected to metres.
+## The models
 
-**Done when:** a 24-row table of LocationID, x, y, and a map coloured by DistReef.
-
+Now fitting the model:
 ```{r}
-#| label: coords
-# TODO: one Lat/Long per LocationID -> x, y in metres; map it.
+mod2 <- glmmTMB(Abundance ~ TreePerimeter + Aspect + DistReef
+                   + (1 | LocationID),
+                family = nbinom1(),
+                data = HTrees2)
+summary(mod2)
+```
+Authors do a bit more model selection, but their choice of model looks good. We have a nbinom1 (which scales variance linearly with the mean given the input covariates). The dispersion parameter is larger than 1 (which would imply Poisson by itself would be fine), so nbinom1 is probably(?) a good choice.
+
+To have something to compare against, let's also fit the exact same model *without* the location random intercept. The authors' own counter model (`mod1`) swaps the family, adds covariates and an interaction all at once, so it's hard to say what any difference is due to. Here, the only thing that changes is the `(1 | LocationID)` term:
+```{r}
+mod0 <- glmmTMB(Abundance ~ TreePerimeter + Aspect + DistReef,
+                family = nbinom1(),
+                data = HTrees2)
+summary(mod0)
+```
+For the record - `(1 | LocationID)` is not really "spatial". It says the two rows (e and s) at the same tree share something, but nothing about neighboring trees being similar. The actually spatial models come later (stage 4).
+
+From here on every diagnostic is shown for both models side by side. Each model flavor gets its own colour (`model_palette` in `sim/model_compare.R`) which stays fixed for the GAMs and spatial basis models later on:
+```{r}
+cmp <- compare_models(list("No location" = mod0, "Location RE" = mod2), HTrees2)
 ```
 
-## 5. Save for later stages
+## Residuals
 
-**Done when:** `results/` holds the truth (β, σ_LocationID, φ), the design (one row per observation) and the coordinates, and you've read them back.
+Let's look at the linear part of the model and it's associated residuals first:
+
+```{r, fig.width=10, fig.height=4}
+# model checks and validation:
+ggplot(cmp$obs, aes(x = fitted, y = pearson, colour = flavor)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  facet_wrap(~ flavor) +
+  scale_colour_model(guide = "none") +
+  ylab("Pearson residuals") +
+  xlab("Fitted values")
+```
+
+The authors check Pearson residuals against every covariate (`TreePerimeter`, `Aspect`, `DistIsland`, `DistReef`, `WMI`) and call them all "ok". For now I'm only keeping `DistReef`, since it's the one covariate that is basically a spatial coordinate - if there's leftover spatial structure, this is one of the first places I'd expect it to show up once we start simulating:
+
+```{r, fig.width=10, fig.height=4}
+ggplot(cmp$obs, aes(x = DistReef, y = pearson, colour = flavor)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  facet_wrap(~ flavor) +
+  scale_colour_model(guide = "none") +
+  ylab("Pearson residuals") +
+  xlab("Distance from Reef (m)")
+```
+
+## Are the residuals spatially correlated?
+
+Next, the residuals on the map. Each point is one `LocationID`, showing the mean Pearson residual of its two rows. Filled = more fish than the model predicts, open = fewer, size = how much. This version works for any model (including the GAMs later, which won't have a random intercept to pull out):
+
+```{r, fig.width=10, fig.height=5}
+ggplot(cmp$loc, aes(x = Long, y = Lat, colour = flavor,
+                    size = abs(mean_pearson), shape = mean_pearson >= 0)) +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_point(stroke = 1) +
+  facet_wrap(~ flavor) +
+  scale_colour_model(guide = "none") +
+  scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 1),
+                     labels = c(`TRUE` = "more than predicted", `FALSE` = "fewer than predicted"),
+                     name = NULL) +
+  scale_size_area(max_size = 6, name = "|mean Pearson residual|") +
+  scale_x_continuous(n.breaks = 3) +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(cmp$loc$Long) + c(-0.006, 0.006),   # ~600 m of context around the sites
+           ylim = range(cmp$loc$Lat) + c(-0.006, 0.006)) +
+  theme(panel.spacing.x = unit(3, "lines")) +
+  labs(caption = "Map tiles © OpenStreetMap contributors")
+```
+
+And the authors' actual check for spatial autocorrelation - instead of looking at the residuals directly, they pull out the random intercept for each `LocationID` and plot it on the map. This one only exists for `mod2`. Red = location has fewer fish than the fixed effects predict, blue = more, size = how much:
+
+```{r}
+# Checking for spatial autocorrelation of residuals:
+ai <- ranef(mod2)$cond$LocationID$`(Intercept)`
+MyData = data.frame(ai = ai,
+                    Lat = tapply(HTrees2$Lat, FUN = mean, INDEX = HTrees2$LocationID),
+                    Lon = tapply(HTrees2$Long, FUN = mean, INDEX = HTrees2$LocationID))
+plot(x = MyData$Lon,
+     y = MyData$Lat,
+     type = "n")
+MyCol <- c("red","blue") [as.numeric(MyData$ai>= 0)+1]
+MyCex <- 5 * abs(ai) / max(ai)
+points(
+  x = MyData$Lon,
+  y = MyData$Lat,
+  col = MyCol,
+  cex = MyCex,
+  pch = 1
+)
+# Random effects for Location, spatially un-correlated.
+```
+
+The authors' conclusion is "spatially un-correlated", i.e. no obvious clumps of red or blue. This is the plot we should return to when we crank up autocorrelation, artificially, when we simualte later on. At some point, this should start to look clumpy, because we do not provide the model any way to account for the fact that some sites are nearer to each other than other sites, only that there might be some residual shared within a site. 
+
+That said, looking at the map above it does kind of look clumped to me (in that there are some negative residuals lumped together in the cetner of the map). But, let's see how weird that really is: the middle map below is the real set of random intercepts, and the other eight are the *same* 24 values shuffled randomly among the locations (i.e., bootstrapping what it looks like when there is no spatial pattern at all, by construction). If the real one doesn't stand out from its neighbors, the clumping isn't convincing:
+
+```{r, fig.width=10, fig.height=9}
+set.seed(215)
+
+lineup <- cmp$loc |>
+  filter(flavor == "Location RE") |>
+  select(LocationID, Long, Lat, ranef) |>
+  list() |>
+  rep(9) |>
+  imap(\(d, i) if (i == 5) d else mutate(d, ranef = sample(ranef))) |>   # panel 5 (the middle) = real
+  bind_rows(.id = "panel") |>
+  mutate(panel = factor(panel, levels = 1:9))
+
+ggplot(lineup, aes(x = Long, y = Lat, size = abs(ranef), shape = ranef >= 0)) +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_point(colour = model_palette[["Location RE"]], stroke = 1) +
+  facet_wrap(~ panel, ncol = 3,
+             labeller = as_labeller(\(x) if_else(x == "5", "Real", "Shuffled"))) +
+  scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 1),
+                     labels = c(`TRUE` = "more than predicted", `FALSE` = "fewer than predicted"),
+                     name = NULL) +
+  scale_size_area(max_size = 6, name = "|random intercept|") +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(lineup$Long) + c(-0.002, 0.002),
+           ylim = range(lineup$Lat) + c(-0.002, 0.002)) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank(),   # coordinates don't matter for a lineup
+        axis.title = element_blank()) +
+  labs(caption = "Map tiles © OpenStreetMap contributors")
+```
+
+Eyeballing 9 maps is a start, but we can do the same thing 999 times and try to glean something more quantatitative. A really easy-to-understand approach is, if we take the correlation of the a given locations' residual against their nearest neighbors' residuals, we would expect that number to be positive IF we see spatial autocorrelation, and much closer to 0 if we don't see spatial autocorrelation. Essentially, when we randomly shuffle locations, we simulate a scenario where space has NO impact on the residual and compare our real observed aggregated residual. This is essentially 'Morans' I test' for spatial autocorrelation
+
+
+```{r, fig.width=10, fig.height=4}
+nb_weights <- cmp$loc |>
+  filter(flavor == "Location RE") |>                     # one row per location (same for every flavor)
+  st_as_sf(coords = c("Long", "Lat"), crs = 4326) |>
+  st_transform(32760) |>                                 # UTM 60S, so distances are in meters
+  knearneigh(k = 4) |>
+  knn2nb() |>
+  nb2listw(style = "W")
+
+set.seed(215)
+moran <- cmp$loc |>
+  group_by(flavor) |>
+  group_modify(\(d, k) {
+    mc <- moran.mc(d$mean_pearson, nb_weights, nsim = 999)
+    tibble(I = mc$res, real = seq_along(mc$res) == length(mc$res), p = mc$p.value)
+  }) |>
+  ungroup()
+
+ggplot(filter(moran, !real), aes(x = I, fill = flavor)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  geom_vline(xintercept = -1 / (length(nb_weights$neighbours) - 1), linetype = 2) +   # E[I] = -1/(n-1), n = 24 locations
+  annotate("text", x = -1 / (length(nb_weights$neighbours) - 1), y = 0, label = "expected with\nno pattern",
+           hjust = 1.05, vjust = -0.3, size = 3) +
+  geom_vline(data = filter(moran, real), aes(xintercept = I, colour = flavor), linewidth = 1) +
+  geom_label(data = filter(moran, real), aes(x = I, y = Inf, label = sprintf("real I = %.2f\np = %.3f", I, p)),
+             vjust = 1.2, hjust = -0.05, size = 3, inherit.aes = FALSE) +
+  facet_wrap(~ flavor) +
+  scale_fill_model(guide = "none") +
+  scale_colour_model(guide = "none") +
+  xlab("Moran's I of the location-mean Pearson residuals (histogram = 999 shuffles, line = real)") +
+  ylab("Shuffles")
+```
+
+## What changes between the models
+
+The fixed effects from both models, estimate ± 95% CI:
+
+```{r, fig.width=8, fig.height=4}
+ggplot(cmp$coef, aes(x = estimate, y = term, colour = flavor)) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_pointrange(aes(xmin = lwr, xmax = upr),
+                  position = position_dodge(width = 0.5)) +
+  scale_colour_model(name = NULL) +
+  xlab("Estimate (log scale)") +
+  ylab(NULL)
+```
+
+`DistReef` is in meter, so its coefficient is per meters and looks tiny on this scale.
+
+## Save for the simulations
+
+Everything the simulations need goes into one file, as three tidy tables: the "truth" (`mod2`'s estimates, which become the parameters we simulate from), the design (one row per observation, without the response), and the locations (one row per tree, with coordinates in meters for the spatial stages):
 
 ```{r}
 #| label: save
-# TODO: saveRDS() truth, design and coords to results_dir.
+truth <- bind_rows(
+  tibble(type = "beta",  parameter = names(fixef(mod2)$cond), value = unname(fixef(mod2)$cond)),
+  tibble(type = "sigma", parameter = "LocationID", value = attr(VarCorr(mod2)$cond$LocationID, "stddev")[[1]]),
+  tibble(type = "phi",   parameter = "nbinom1",    value = sigma(mod2))   # NB1: Var = mu * (1 + phi)
+)
+
+design <- HTrees2 |>
+  select(LocationID, Aspect, TreePerimeter, DistReef, Lat, Long)
+
+locations <- HTrees2 |>
+  distinct(LocationID, Lat, Long) |>
+  st_as_sf(coords = c("Long", "Lat"), crs = 4326, remove = FALSE) |>
+  st_transform(32760) |>                                     # UTM 60S, meters
+  mutate(x = st_coordinates(geometry)[, 1],
+         y = st_coordinates(geometry)[, 2]) |>
+  st_drop_geometry() |>
+  as_tibble()
+
+saveRDS(list(truth = truth, design = design, locations = locations),
+        file.path(results_dir, "stage1.rds"))
 ```
 
-## Diagnostics for the talk
+Reading it back, which is exactly what the later stages do:
 
-Pick the 1–2 figures from this stage that set up the baseline: what the authors saw, and what they concluded about space.
-
-**Done when:** the figures are saved to `results/` with names the talk can find.
-
-## In your own words
-
-1. What does σ̂ ≈ 0.41 mean in fish-count terms, compared with the Aspect effect?
-
-    <br><br><br>
-
-2. What did the authors' bubble plot let them conclude, and what couldn't it tell them?
-
-    <br><br><br>
+```{r}
+stage1 <- readRDS(file.path(results_dir, "stage1.rds"))
+stage1$truth
+glimpse(stage1$design)
+glimpse(stage1$locations)
+```
