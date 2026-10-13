@@ -1,1 +1,7 @@
 output/
+.quarto/
+slides/*.html
+slides/*_files/
+
+/.quarto/
+**/*.quarto_ipynb

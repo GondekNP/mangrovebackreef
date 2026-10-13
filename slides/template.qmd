@@ -1,0 +1,61 @@
+---
+title: "Quarto Live template"
+subtitle: "R in the browser via webR"
+format: live-revealjs
+engine: knitr
+
+# Packages installed into webR when the deck loads (from repo.r-wasm.org).
+webr:
+  packages:
+    - ggplot2
+  cell-options:
+    canvas: false   # draw plots with png() instead of an HTML canvas
+    fig-width: 8
+    fig-height: 3.5
+
+# Files copied into webR's virtual filesystem. The leading ../ is dropped,
+# so inside webR these live at data/..., the same paths the R scripts use.
+resources:
+  - ../data/abundance.tree.and.controls.txt
+---
+
+{{< include ../_extensions/r-wasm/live/_knitr.qmd >}}
+
+## Setup {.smaller}
+
+Hidden setup cell: `edit: false` cells run automatically once webR is ready.
+
+```{webr}
+#| edit: false
+#| include: false
+library(ggplot2)
+theme_set(theme_bw(base_size = 14))
+```
+
+Cells below are editable: `autorun: true` runs them on load, then **Run Code** or `Ctrl/Cmd + Enter` reruns after you edit.
+
+## Read data
+
+```{webr}
+#| autorun: true
+dat <- read.delim("data/abundance.tree.and.controls.txt")
+str(dat)
+```
+
+## Plot
+
+```{webr}
+#| autorun: true
+ggplot(dat, aes(DistReef, Abundance, colour = Treatment)) +
+  geom_point(size = 3)
+```
+
+## Static R (rendered ahead of time)
+
+Plain `{r}` chunks run in the devcontainer's R at render time, not in the browser.
+Use them for anything slow or not available in webR.
+
+```{r}
+#| echo: true
+R.version.string
+```

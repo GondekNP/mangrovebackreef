@@ -29,3 +29,12 @@ This runs each script in `R code/` in a fresh R session and writes its console o
 Notes:
 - The scripts originally sourced `HighstatLibV7.R` (Zuur et al., Highland Statistics Ltd), which is copyrighted and not included. Its only use, `panel.cor()` in exploratory `pairs()` plots, is commented out; no model depends on it.
 - The paper's analyses were run in R 3.5.0; `renv.lock` pins R 4.5.3 and current packages. Results match the paper closely (e.g. the shoaling GAMM p-values exactly), with small differences in some glmmTMB p-values (tree vs. mimic p = 0.155 vs. 0.157 published).
+
+### Slides (Quarto Live)
+Decks live in [`slides/`](slides/) and use [quarto-live](https://r-wasm.github.io/quarto-live/) to run R in the browser via webR. `{webr}` cells run live in the audience's browser; plain `{r}` chunks run at render time in the devcontainer's R. [`slides/template.qmd`](slides/template.qmd) is a starting point (reads a data file, draws a ggplot).
+
+```sh
+quarto preview slides/template.qmd   # served on port 4200
+```
+
+webR packages are listed under `webr: packages:` in each deck's front matter. Data files listed under `resources:` are copied into webR's filesystem with the leading `../` stripped, so `read.delim("data/...")` works the same in the browser as in `R code/`.
