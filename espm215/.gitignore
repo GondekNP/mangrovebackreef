@@ -5,3 +5,6 @@ results/*.RDS
 # Rendered Quarto output
 *.html
 *_files/
+
+# Cached OSM basemap tiles (ggspatial::annotation_map_tile)
+results/basemap/
