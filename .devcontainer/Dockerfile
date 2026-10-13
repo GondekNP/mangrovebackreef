@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake pandoc libcurl4-openssl-dev libssl-dev libxml2-dev zlib1g-dev libuv1-dev libicu-dev \
     libx11-dev libcairo2-dev libfontconfig1-dev libfreetype6-dev libfribidi-dev libharfbuzz-dev \
     libjpeg-dev libpng-dev libtiff-dev libwebp-dev \
+    libgdal-dev libgeos-dev libproj-dev libudunits2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # rsession is launched directly by rserver (no R wrapper script), so libR.so
