@@ -6,89 +6,56 @@ format:
 engine: knitr
 ---
 
-**Goal.** Simulate from `mod2` on the real design with fresh location intercepts each replicate, and check that the GLMM recovers what you put in. Then ramp up the site-to-site variance, which has nothing to do with space, and see what the diagnostics do. This is the "well-specified" reference for stages 3 and 4.
-
-## Checklist
-
-- [ ] Write `sim_glmm()` in `sim/sim_glmm.R`
-- [ ] Recovery check at the stage-1 truth
-- [ ] Compare against a GLM that ignores location
-- [ ] Ramp: iid σ from 0 to large
-- [ ] Diagnostics: bubble plot and Moran's I on the intercepts
+**Goal.** Simulate from `mod2` on the real design (site-to-site variance, nothing spatial), fit the same two models as stage 1, and see what the spatial-residual checks say when we *know* there's no spatial pattern. This is the "no space" reference for stage 4.
 
 ```{r}
 #| label: setup
 source("../sim/_load.R")
+library(tidyverse)
 library(glmmTMB)
-HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
-                      header = TRUE, dec = ".")
+library(sf)
+library(spdep)
+
+# Truth, design and locations saved by stage 1 (render stage 1 first)
+stage1 <- readRDS(file.path(results_dir, "stage1.rds"))
+stage1$truth
 ```
 
-## 1. Write `sim_glmm()`
+## Simulate
 
-In `sim/sim_glmm.R`: fresh a_j ~ N(0, σ²) for the 24 locations on every call, η = Xβ + a[location], NB1 counts. Take σ as an argument so the ramp can override it.
-
-**Done when:** one simulated data set that looks like `HTrees2` (range, zeros, means by Aspect).
+`sim_glmm()` in `sim/sim_glmm.R`: fresh a_j ~ N(0, σ²) for the 24 locations on every call, η = Xβ + a[location], NB1 counts. σ is an argument so the ramp can override it.
 
 ```{r}
 #| label: sim-one
-# TODO: read the stage-1 truth from results_dir; call sim_glmm() once and compare with HTrees2.
+# TODO: call sim_glmm() once with stage1$design and stage1$truth; compare with the real data.
 ```
 
-## 2. Recovery at the stage-1 truth
+## Fit both models
 
-Refit the `mod2` formula to many replicates.
-
-**Done when:** bias and 95% CI coverage for each β, the spread of σ̂, and how often σ̂ hits the boundary at zero.
+The stage-1 pair: `mod2` and the no-location `mod0`, on the same simulated data. `compare_models()` gives the same A/B tables as stage 1.
 
 ```{r}
-#| label: recovery
-# TODO: replicate loop (sim/replicate.R) at sigma = stage-1 sigma-hat; summarize.
+#| label: fit
+# TODO: fit mod0 and mod2 to one simulated data set; compare_models().
 ```
 
-## 3. Ignore location
+## Are the residuals spatially correlated?
 
-Fit a GLM with no location term to the same replicates.
-
-**Done when:** a side-by-side table of SEs and coverage for Aspect vs TreePerimeter and DistReef under both models.
+Same lineup and Moran's I as stage 1. Under this truth the answer is "no" by construction, so any flag is a false positive.
 
 ```{r}
-#| label: glm-compare
-# TODO: fit the no-location GLM to each replicate; compare SEs and coverage.
+#| label: diagnostics
+# TODO: lineup + Moran's I for one simulated data set (copy from stage 1).
 ```
 
 ## Ramp: site variance without space
 
-Sweep σ from 0 upward (grid is your call). At each value, rerun §2–§3.
-
-**Done when:** a figure of coverage (GLMM vs GLM) and boundary rate against σ, saved to `results/`.
+Sweep σ from 0 upward, many replicates per value: how often does Moran's I flag (false-positive rate), and how do the two models' SEs and coverage compare?
 
 ```{r}
 #| label: ramp
-# TODO: sweep sigma; save the ramp table to results_dir.
+# TODO: sweep sigma with the replicate loop (sim/replicate.R); save the ramp table to results_dir.
+# TODO: check E[I] = -1/(n-1) on the simulated data: the mean real Moran's I across
+#   replicates should land on -1/23 (no spatial truth here). To show it goes to 0
+#   as n grows, also simulate on designs with more locations (e.g. 12, 24, 48, 96).
 ```
-
-## Diagnostics for the talk
-
-Bubble plot of the fitted intercepts on the map, and Moran's I on the 24 intercepts, across the ramp. Under this truth, Moran's I should *not* flag anything. That's the point of comparison for stage 4.
-
-**Done when:** a Moran's I false-positive rate per σ, and one example bubble plot. (Needs `spdep` or `ape`; see README.)
-
-```{r}
-#| label: diagnostics
-# TODO: Moran's I on the fitted intercepts per replicate; false-positive rate by sigma.
-```
-
-## In your own words
-
-1. Which coefficients does ignoring location hurt, and why those?
-
-    <br><br><br>
-
-2. What does the boundary rate at small σ say about reading σ̂ ≈ 0 in a real study?
-
-    <br><br><br>
-
-3. Why should Moran's I stay quiet here even when σ is large?
-
-    <br><br><br>

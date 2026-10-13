@@ -1,9 +1,8 @@
 # Stage 4: stage-3 truth plus a spatial field (cumulative).
 # Used by stages/04-q2-sim-spatial-basis.qmd.
 
-# TODO: write a helper that returns the 24 location coordinates in metres
-#   (one tree per LocationID; the e and s rows share Lat/Long). Stage 1 saves
-#   these to results/; this helper can just read them back.
+# Location coordinates in metres (UTM 60S) are saved by stage 1:
+#   stage1$locations  24 rows: LocationID, Lat, Long, x, y
 
 # TODO: write sim_spatial().
 #   - Start from the stage-3 truth (nonlinear term + iid a_j + NB1).

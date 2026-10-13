@@ -25,10 +25,13 @@ espm215/
   stages/     one .qmd per stage (renders to HTML)
   sim/        simulation code; _load.R sources the rest
                 sim_glmm.R -> sim_nonlinear.R -> sim_spatial.R (cumulative), replicate.R
+                model_compare.R: fixed colour per model flavor + tidy A/B diagnostic tables
   results/    .rds outputs and saved figures (*.rds / *.RDS gitignored; folder kept)
   notes/      derivations
   archive/    earlier Q1-based work, kept for reference (not rendered)
 ```
+
+**Stage 1 → simulations.** Stage 1 saves `results/stage1.rds`: a list of three tidy tibbles, `truth` (type, parameter, value: `mod2`'s β, σ_LocationID and NB1 φ), `design` (48 rows, no response) and `locations` (24 rows, with x/y in UTM 60S metres). It's gitignored, so render stage 1 before stages 2–4.
 
 **Paths.** `here` isn't installed, so paths are relative. Quarto runs each chunk with the working directory set to the `.qmd`'s folder. From `stages/`, use `source("../sim/_load.R")`. It defines `espm215_root`, `data_dir` (the repo's `data/`) and `results_dir`. Prefer `file.path(results_dir, ...)` to absolute paths, so the files work in any checkout.
 
@@ -45,6 +48,7 @@ Last check (Oct 9): all four stage files and `notes/derivations.qmd` rendered wi
 
 ## Known gaps
 
-- **Moran's I: neither `spdep` nor `ape` is installed** in the renv library or the site library. Install one (and record it in `renv.lock`) before the stage 2 and stage 4 diagnostics.
+- **Moran's I** uses `spdep` (permutation test via `moran.mc()`, 4 nearest neighbours in UTM 60S metres). See the stage 1 diagnostics.
+- **Basemap tiles need the network on the first render.** Maps use `ggspatial::annotation_map_tile(type = "osm")` inline in the ggplot call, and the tiles are cached in `results/basemap/` (gitignored) after the first render. Keep the "© OpenStreetMap contributors" caption; OSM's tile policy requires it.
 - `here` is not installed, which is why the relative paths above are used.
 - `_extensions/` (quarto-live) sits at the repo root but is not committed on this branch. The stage files are plain HTML and don't need it; `slides/` does.
