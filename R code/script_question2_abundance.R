@@ -312,11 +312,13 @@ plot(x = MyData$Lon,
      type = "n")
 MyCol <- c("red","blue") [as.numeric(MyData$ai>= 0)+1]
 MyCex <- 5 * abs(ai) / max(ai)
-points(x = MyData$Lon,
-       y = MyData$Lat,
-       col = MyCol,
-       cex = MyCex,
-       pch = 1)
+points(
+  x = MyData$Lon,
+  y = MyData$Lat,
+  col = MyCol,
+  cex = MyCex,
+  pch = 1
+)
 # Random effects for Location, spatially un-correlated.
 
 # Overdispersion before dropping variables
