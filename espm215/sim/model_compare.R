@@ -12,7 +12,10 @@ model_palette <- c(
   "No location"         = "#E69F00",
   "Location RE"         = "#0072B2",
   "GAM"                 = "#009E73",
-  "GAM + spatial basis" = "#D55E00"
+  "GAM + s(x, y)"       = "#D55E00",
+  "Full covariance"     = "#CC79A7",
+  "Eigen basis"         = "#56B4E9",
+  "Knot basis"          = "#000000"
 )
 model_levels <- names(model_palette)
 
