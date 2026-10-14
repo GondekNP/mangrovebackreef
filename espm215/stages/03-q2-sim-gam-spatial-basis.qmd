@@ -1,0 +1,627 @@
+---
+title: "Stage 3 — Q2 simulated + nonlinearity + space: GAMs and Hefley basis functions"
+format:
+  html:
+    toc: true
+engine: knitr
+---
+
+**Goal.** Two steps on top of the stage-2 truth. First, make one covariate's effect nonlinear and fit it with a smooth (a GAM). Then add a spatial field at the 24 locations, at three levels of complexity (the same amount of spatial variation, spread over more and finer scales), and fit it the ways Hefley et al. describe: a smooth surface in the mean, the full spatial covariance matrix in the variance, and two cheaper basis-function versions of that covariance (the leading eigenvectors, and kernels on a few knots). The checks are the same ones as stages 1 and 2.
+
+```{r}
+#| label: setup
+#| message: false
+source("../sim/_load.R")
+# plyr (loaded by the authors' scripts) masks dplyr's summarise()/count() if it's
+# attached in an interactive session; detach it so the dplyr versions are used
+if ("package:plyr" %in% search()) detach("package:plyr")
+library(tidyverse)
+library(glmmTMB)
+library(mgcv)
+library(ggspatial)
+library(sf)
+library(spdep)
+library(patchwork)
+
+# Truth, design and locations saved by stage 1 (render stage 1 first)
+stage1 <- readRDS(file.path(results_dir, "stage1.rds"))
+
+# Same neighbour definition as stages 1 and 2: 4 nearest neighbours, distances in metres
+nb_weights <- moran_weights(stage1$locations, k = 4)
+
+# The terms whose true values carry over unchanged from stage 1. The intercept and the
+# TreePerimeter slope don't: the TreePerimeter effect is now a curve, and a smooth is
+# centred, so the intercept means something different in each model.
+betas <- stage1$truth |>
+  filter(type == "beta", parameter %in% c("Aspects", "DistReef")) |>
+  select(term = parameter, truth = value)
+
+# Set to TRUE to recompute the replicate tables instead of reading them from results/
+rerun <- FALSE
+```
+
+# Part 1: a nonlinear covariate
+
+The authors fit smooths themselves, for a different response: whether fish were shoaling (`Grouping`, binomial) in Q5. See [`R code/script_question5_shoaling.R`](../../R%20code/script_question5_shoaling.R): lines 57–74 compare `gam()` fits with `s(TreePerimeter)` and `s(DistReef)`, and lines 98–107 fit the final `gamm()` with `s(DistReef, bs = "cc") + s(TreePerimeter, bs = "cs")` and a random intercept per tree (`random = list(Label = ~1)`). We don't refit that model here. To keep the running example, we simulate a nonlinear `TreePerimeter` effect on Abundance instead.
+
+## Simulate one data set
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 117–124, `xyplot(Abundance ~ TreePerimeter | factor(Aspect))` (real data).
+:::
+`sim_nonlinear()` (in `sim/sim_nonlinear.R`) is `sim_glmm()` from stage 2 with one change: the straight-line `TreePerimeter` term is replaced by a hump that peaks at 15 m and rises by the same amount over 0–15 m as the stage-1 line does over 0–30 m (intermediate-sized trees are best). Everything else (Aspect, DistReef, the iid location intercepts with the stage-1 σ, NB1 counts with the stage-1 φ) is the stage-2 truth.
+
+Left: the true `TreePerimeter` effect (log scale), with the stage-1 straight line dashed for reference. Right: the simulated counts.
+
+```{r, fig.width=10, fig.height=4}
+set.seed(215)
+sim_nl <- sim_nonlinear(stage1$design, stage1$truth)
+beta_tp <- stage1$truth$value[stage1$truth$parameter == "TreePerimeter"]
+
+p_curve <- ggplot(attr(sim_nl, "f"), aes(x = TreePerimeter, y = f)) +
+  geom_abline(intercept = 0, slope = beta_tp, linetype = 2) +
+  geom_line(linewidth = 1) +
+  labs(title = "True TreePerimeter effect", x = "Tree perimeter (m)",
+       y = "Effect on log(mean abundance)")
+
+p_counts <- ggplot(sim_nl, aes(x = TreePerimeter, y = Abundance)) +
+  geom_point(size = 2, alpha = 0.8) +
+  facet_wrap(~ Aspect, labeller = as_labeller(c(e = "Aspect e", s = "Aspect s"))) +
+  labs(title = "Simulated counts", x = "Tree perimeter (m)")
+
+p_curve + p_counts + plot_layout(widths = c(1, 1.6))
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+## Fit both models
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 232–236, `mod2 <- glmmTMB(...)` and `summary(mod2)` (the linear model); [`script_question5_shoaling.R`](../../R%20code/script_question5_shoaling.R) lines 57–61 (`gam(... + s(TreePerimeter))`, `plot()`, `gam.check()`) and 98–113 (the final `gamm()` and `plot(group5$gam)`); [`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 261–267 (residuals vs `TreePerimeter`) and 512–521 (`predict(mod2, newdata = ...)` across trees, for the fitted curve).
+:::
+The stage-1 model (`mod2`'s formula, a straight line in `TreePerimeter`) and the same model with the line replaced by a smooth, `s(TreePerimeter)`. Both are NB1 in glmmTMB, so the only difference is the line vs the smooth. A smooth is a set of basis functions (here a thin-plate spline with up to 9 wiggles' worth of them) whose coefficients are penalised so the curve only bends as much as the data support. glmmTMB fits the penalised part as a random effect, which is the same trick Hefley uses for space in part 2.
+
+Estimates ± 95% CI for the two terms whose true values are unchanged from stage 1 (black crosses):
+
+```{r, fig.width=8, fig.height=3}
+models_nl <- fit_nonlinear(sim_nl)
+cmp_nl    <- compare_models(models_nl, sim_nl)
+
+ggplot(filter(cmp_nl$coef, term %in% betas$term), aes(x = estimate, y = term, colour = flavor)) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_pointrange(aes(xmin = lwr, xmax = upr), position = position_dodge(width = 0.5)) +
+  geom_point(data = betas, aes(x = truth, y = term), inherit.aes = FALSE,
+             shape = 4, size = 3, stroke = 1.2) +
+  facet_wrap(~ term, scales = "free_x") +
+  scale_colour_model(name = NULL) +
+  xlab("Estimate (log scale); × = true value") +
+  ylab(NULL) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+Each model's fitted `TreePerimeter` effect against the true curve (black). All three curves are centred to mean zero over the range of tree perimeters, since only the shape is comparable:
+
+```{r, fig.width=7, fig.height=4}
+tp_grid <- tibble(TreePerimeter = attr(sim_nl, "f")$TreePerimeter,
+                  Aspect = factor("e", levels = levels(sim_nl$Aspect)),
+                  DistReef = mean(sim_nl$DistReef), LocationID = -1)
+
+# A new LocationID (-1) gets location intercept 0. re.form = NULL keeps the smooth's
+# penalised wiggles, which glmmTMB fits as a random effect (re.form = NA would drop them)
+tp_fits <- imap(models_nl, \(m, flavor) {
+  fit <- predict(m, newdata = tp_grid, re.form = NULL, allow.new.levels = TRUE)
+  tibble(TreePerimeter = tp_grid$TreePerimeter, fit = fit - mean(fit), flavor = as_flavor(flavor))
+}) |> bind_rows()
+
+ggplot(tp_fits, aes(x = TreePerimeter)) +
+  geom_line(aes(y = fit, colour = flavor), linewidth = 1) +
+  geom_line(data = mutate(attr(sim_nl, "f"), f = f - mean(f)), aes(y = f), linewidth = 1) +
+  scale_colour_model(name = NULL) +
+  labs(x = "Tree perimeter (m)", y = "Effect on log(mean abundance), centred",
+       caption = "Black: the true curve")
+```
+
+And stage 1's residual check, Pearson residuals against the covariate, now for `TreePerimeter`:
+
+```{r, fig.width=10, fig.height=4}
+ggplot(cmp_nl$obs, aes(x = TreePerimeter, y = pearson, colour = flavor)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  facet_wrap(~ flavor) +
+  scale_colour_model(guide = "none") +
+  ylab("Pearson residuals") +
+  xlab("Tree perimeter (m)")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+# Part 2: a spatial field
+
+## The truth: three levels of spatial complexity
+
+`sim_spatial()` (in `sim/sim_spatial.R`) takes the part-1 truth (the `TreePerimeter` hump, Aspect, DistReef, iid location intercepts, NB1 counts) and adds one more term to each location's log mean: a draw from a spatial field w. The field is built from three independent layers, each a smooth random surface in which two locations' values have correlation exp(−distance / range):
+
+- a **broad** layer, range 600 m (the sites span about 800 m, so roughly one gradient across them)
+- a **medium** layer, range 200 m (patches a few sites across)
+- a **fine** layer, range 60 m (only the closest neighbours are alike)
+
+The field's total SD is 1 at every level (about 2.5 times the stage-1 σ). The levels differ only in how that variance is split across the layers, with more of it moved to finer scales as complexity goes up:
+
+| level | broad (600 m) | medium (200 m) | fine (60 m) |
+|---|---|---|---|
+| none | — | — | — |
+| low | 100% | — | — |
+| medium | 70% | 30% | — |
+| high | 60% | 25% | 15% |
+
+"None" is the part-1 truth with no field: the reference, where anything flagged is a false positive.
+
+To draw the field as a surface, the three layers are simulated jointly on a 15 m grid over the whole study area and at the 24 sites, so the values at the sites (the ones that go into the simulated counts) are exactly the surface's values at those points. Colour is what the field does to a tree's expected fish count: ×2 means twice as many fish as the same tree would have with no field, ×0.5 half as many. Points are the 24 sites.
+
+First, one draw of each layer on its own, each with variance 1:
+
+```{r, fig.width=15, fig.height=4.5}
+complexity <- tibble(
+  level  = c("none", "low", "medium", "high"),
+  shares = list(c(0, 0, 0), c(1, 0, 0), c(0.7, 0.3, 0), c(0.6, 0.25, 0.15))
+) |>
+  mutate(label = factor(level, levels = level))
+layer_names <- c(w_600 = "broad layer (600 m)", w_200 = "medium layer (200 m)", w_60 = "fine layer (60 m)")
+
+set.seed(215)
+surface <- field_surface(stage1$locations)
+
+# Colour = multiplicative effect on the expected count, exp(w), on a log scale centred on ×1
+scale_fill_effect <- function(...) {
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
+                       limits = c(-3, 3), oob = scales::squish,
+                       breaks = log(c(0.1, 0.25, 0.5, 1, 2, 4, 10)),
+                       labels = c("×0.1", "×0.25", "×0.5", "×1", "×2", "×4", "×10"),
+                       name = "Effect on\nexpected count", ...)
+}
+surface_map <- function(d) {
+  ggplot(d, aes(x = x, y = y)) +
+    geom_raster(aes(fill = value)) +
+    geom_point(data = stage1$locations, size = 1.2) +
+    scale_fill_effect() +
+    coord_equal(expand = FALSE) +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())
+}
+
+surface$grid |>
+  pivot_longer(starts_with("w_"), names_to = "layer", values_to = "value") |>
+  mutate(layer = factor(layer_names[layer], levels = layer_names)) |>
+  surface_map() +
+  facet_wrap(~ layer)
+```
+
+Then the three levels, one per column. Top: how the field's variance is split across the layers as a function of distance. Each band is a layer's share × its correlation at that distance, so at distance 0 the bands stack to exactly 1 (the field's total variance), and the height at any distance is the correlation between two trees that far apart. Bottom: the resulting field, the layers above added up with those shares, from the same three draws, so each level is the one before with variance moved to finer layers.
+
+```{r, fig.width=15, fig.height=9}
+kernels <- complexity |>
+  filter(level != "none") |>
+  mutate(k = map(shares, \(sh) expand_grid(distance = seq(0, 800, by = 5),
+                                           layer = names(layer_names)) |>
+                   mutate(range = as.numeric(sub("w_", "", layer)),
+                          share = sh[match(layer, names(layer_names))],
+                          value = share * exp(-distance / range)))) |>
+  select(label, k) |>
+  unnest(k) |>
+  mutate(layer = factor(layer_names[layer], levels = rev(layer_names)))
+
+p_kernels <- ggplot(kernels, aes(x = distance, y = value, fill = layer)) +
+  geom_area() +
+  facet_wrap(~ label) +
+  scale_fill_manual(values = setNames(c("#08306B", "#4292C6", "#C6DBEF"), layer_names), name = NULL) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(x = "Distance between two trees (m)", y = "Correlation of the field\n(share × layer correlation)")
+
+fields_grid <- complexity |>
+  filter(level != "none") |>
+  mutate(g = map(shares, \(sh) tibble(x = surface$grid$x, y = surface$grid$y,
+                                      value = drop(as.matrix(surface$grid[names(layer_names)]) %*% sqrt(sh))))) |>
+  select(label, g) |>
+  unnest(g)
+
+p_fields <- surface_map(fields_grid) + facet_wrap(~ label)
+
+p_kernels / p_fields + plot_layout(heights = c(1, 1.3))
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+## Five ways to model it
+
+Every model below keeps the part-1 structure: `Abundance ~ s(TreePerimeter) + Aspect + DistReef + (1 | LocationID)`, NB1 in glmmTMB. They differ only in what they add for space. Following Hefley et al. (2017), there are two places to put it:
+
+- **In the mean (first-order).** Add basis functions of location, Zα, to the linear predictor: log μ = Xβ + Zα. Each column of Z is a fixed surface over the study area; α says how much of each surface to use.
+- **In the variance (second-order).** Add a correlated random effect, log μ = Xβ + η with η ~ N(0, σ²R(ϕ)), where R(ϕ) is a correlation matrix between every pair of locations that decays with distance at a rate set by the range ϕ.
+
+Hefley's point is that these are the same model: if α ~ N(0, σ²I), then Zα ~ N(0, σ²ZZ′), so any choice of basis Z implies a covariance ZZ′, and any covariance R can be written as a basis (its eigenvectors scaled by the square roots of their eigenvalues, Z = QΛ^½, gives ZZ′ = R exactly). What differs is the size of the thing the computer has to work with.
+
+| flavor | where space goes | added term |
+|---|---|---|
+| **GAM** | nowhere (ignores space) | none |
+| **GAM + s(x, y)** | mean: a penalised spline surface over the coordinates | `s(x_km, y_km, k = 10)` |
+| **Full covariance** | variance: the full 24 × 24 exponential correlation matrix, range estimated | `exp(pos + 0 \| grp)` |
+| **Eigen basis** | the full covariance, reduced rank: the 5 leading eigenvectors of R(200 m), α ~ N(0, σ²I) | `homdiag(0 + e1 + … + e5 \| grp)` |
+| **Knot basis** | Gaussian kernels centred on 6 knots, α ~ N(0, σ²I) | `homdiag(0 + k1 + … + k6 \| grp)` |
+
+`homdiag()` is glmmTMB's "independent coefficients with one shared variance" structure, i.e. α ~ N(0, σ²I). The eigen basis fixes the range at 200 m (the medium layer) rather than estimating it, as in Hefley's examples; the knot basis uses a 3 × 2 grid of knots over the sites with a kernel width equal to the knot spacing.
+
+::: {.callout-tip collapse="true"}
+## Why not always use the full covariance? And how the two bases were set up
+
+*Background figures for the table above; expand if useful.*
+
+Left: the full covariance model has to factor an n × n matrix (one row per location) every time it tries new parameter values, and the cost of that grows with n³. With 24 locations it's instant; the timings below are one factorisation of an exponential correlation matrix for n random locations. Middle: the share of R(200 m)'s total variance captured by the first m eigenvectors (dashed: m = 5, the eigen basis used here). Right: the 6 knots (crosses) and the 24 locations; circles have a radius of one kernel width.
+
+```{r, fig.width=15, fig.height=4.5}
+#| code-fold: true
+#| code-summary: "Show the code"
+set.seed(215)
+chol_time <- tibble(n = c(250, 500, 1000, 2000, 3000, 4000)) |>
+  mutate(seconds = map_dbl(n, \(n) {
+    xy <- matrix(runif(2 * n), ncol = 2)
+    R  <- exp(-as.matrix(dist(xy)) / 0.2)
+    system.time(chol(R))[["elapsed"]]
+  }))
+
+p_time <- ggplot(chol_time, aes(x = n, y = seconds)) +
+  geom_line() +
+  geom_point(size = 2) +
+  labs(title = "Cost of one factorisation of the full covariance",
+       x = "Number of locations (n)", y = "Seconds")
+
+sp_setup <- spatial_setup(stage1$locations)
+eig <- eigen(exp_correlation(stage1$locations, sp_setup$eigen_range), symmetric = TRUE)$values
+p_eig <- tibble(m = seq_along(eig), share = cumsum(eig) / sum(eig)) |>
+  ggplot(aes(x = m, y = share)) +
+  geom_vline(xintercept = sp_setup$m, linetype = 2) +
+  geom_line() +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = scales::label_percent(), limits = c(0, 1)) +
+  labs(title = "Variance captured by the leading eigenvectors of R(200 m)",
+       x = "Number of eigenvectors (m)", y = "Share of total variance")
+
+knots_ll <- st_as_sf(sp_setup$knots, coords = c("x", "y"), crs = 32760) |> st_transform(4326)
+circles_ll <- st_as_sf(sp_setup$knots, coords = c("x", "y"), crs = 32760) |>
+  st_buffer(sp_setup$bandwidth) |> st_transform(4326)
+p_knots <- ggplot() +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_sf(data = circles_ll, fill = NA, colour = model_palette[["Knot basis"]], linetype = 2) +
+  geom_sf(data = knots_ll, shape = 4, size = 4, stroke = 1.5, colour = model_palette[["Knot basis"]]) +
+  geom_point(data = stage1$locations, aes(x = Long, y = Lat), size = 2) +
+  scale_x_continuous(n.breaks = 3) +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(stage1$locations$Long) + c(-0.004, 0.004),
+           ylim = range(stage1$locations$Lat) + c(-0.004, 0.004)) +
+  labs(title = "Knots and kernel widths", x = NULL, y = NULL,
+       caption = "Map tiles © OpenStreetMap contributors")
+
+p_time + p_eig + p_knots
+```
+:::
+
+## Simulate one data set and fit all five
+
+One data set at medium complexity (70% broad, 30% medium), using the same layer draws as the surfaces above (so its field is the "medium" surface), fit with all five models. Estimates ± 95% CI, with the true values as black crosses:
+
+```{r, fig.width=9, fig.height=4}
+set.seed(215)
+sim_sp <- sim_spatial(stage1$design, stage1$truth, stage1$locations,
+                      shares = complexity$shares[[3]], layers = surface$layers) |>
+  add_spatial(sp_setup, stage1$locations)
+
+models_sp <- fit_spatial(sim_sp)
+cmp_sp    <- compare_models(models_sp, sim_sp)
+
+ggplot(filter(cmp_sp$coef, term %in% betas$term), aes(x = estimate, y = term, colour = flavor)) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_pointrange(aes(xmin = lwr, xmax = upr), position = position_dodge(width = 0.7)) +
+  geom_point(data = betas, aes(x = truth, y = term), inherit.aes = FALSE,
+             shape = 4, size = 3, stroke = 1.2) +
+  facet_wrap(~ term, scales = "free_x") +
+  scale_colour_model(name = NULL) +
+  xlab("Estimate (log scale); × = true value") +
+  ylab(NULL) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+The variance terms each model estimated: the SD of the iid location intercepts (true 0.41), the SD of the spatial term (true 1 for the field; for the bases it is the SD of α, which is on a different scale), and, for the full covariance model, the estimated range (the true field mixes 600 m and 200 m layers, so there is no single true range):
+
+```{r}
+spatial_sd <- \(m) {
+  vc <- VarCorr(m)$cond
+  if ("grp" %in% names(vc)) attr(vc$grp, "stddev")[[1]] else NA_real_
+}
+full_range <- \(m) {
+  R  <- attr(VarCorr(m)$cond$grp, "correlation")
+  xy <- parseNumLevels(rownames(R))
+  D  <- as.matrix(dist(xy)) * 1000
+  keep <- upper.tri(R) & R > 1e-8 & R < 1
+  median(-D[keep] / log(R[keep]))
+}
+
+imap(models_sp, \(m, flavor) tibble(
+  flavor           = flavor,
+  sigma_LocationID = attr(VarCorr(m)$cond$LocationID, "stddev")[[1]],
+  sd_spatial       = spatial_sd(m),
+  range_m          = if (flavor == "Full covariance") full_range(m) else NA_real_,
+  phi              = sigma(m)
+)) |> bind_rows()
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+## Are the residuals clumped within a tree?
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 270–275, `boxplot(E1 ~ Aspect)`: the same residual boxplot, grouped by `Aspect` rather than `LocationID`. The partner correlation has no counterpart.
+:::
+The models assume every count's residual is independent of every other's. Each tree here was counted twice (east and south), so the most basic way that can fail is for a tree's two residuals to move together: if something about a tree that the model doesn't know about raises or lowers both counts, both residuals land on the same side of zero. That's clumping *within* a site; the spatial checks further down ask about similarity *between* nearby sites.
+
+First, the authors' residual boxplot (they plot `boxplot(E1 ~ Treatment)` and `boxplot(E1 ~ Aspect)`), here by `LocationID`: each box spans one tree's two Pearson residuals (points: e = east, s = south), with trees ordered from the lowest to the highest mean residual within each model:
+
+```{r, fig.width=11, fig.height=9.0}
+cmp_sp$obs |>
+  group_by(flavor, LocationID) |>
+  mutate(site_mean = mean(pearson)) |>
+  group_by(flavor) |>
+  mutate(site_rank = dense_rank(site_mean)) |>
+  ungroup() |>
+  ggplot(aes(x = site_rank, y = pearson, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_boxplot(aes(group = site_rank), outlier.shape = NA) +
+  geom_point(aes(shape = Aspect), size = 2) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_colour_model(guide = "none") +
+  scale_shape_manual(values = c(e = 16, s = 1), name = "Aspect") +
+  scale_x_continuous(breaks = NULL) +
+  xlab("Trees (LocationID), ordered by mean residual") +
+  ylab("Pearson residuals")
+```
+
+Then one number for the same idea, the **partner correlation**: the correlation between each tree's east residual and its south residual, across the 24 trees (left). To judge it, the same shuffle as the Moran's I test: pair each east residual with a randomly chosen tree's south residual instead, 999 times, so that partners are unrelated by construction (right; dashed line at 0, line = simulated):
+
+```{r, fig.width=12, fig.height=11.5}
+set.seed(215)
+partner_cmp_sp <- partner_check(models_sp, sim_sp, nsim = 999)
+
+p_pairs <- ggplot(partner_cmp_sp$pairs, aes(x = r_e, y = r_s, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_point(size = 2) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_colour_model(guide = "none") +
+  labs(x = "East residual", y = "South residual (same tree)")
+
+p_perm <- ggplot(filter(partner_cmp_sp$perm, !real), aes(x = r, fill = flavor)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_vline(data = filter(partner_cmp_sp$perm, real), aes(xintercept = r, colour = flavor), linewidth = 1) +
+  geom_label(data = filter(partner_cmp_sp$perm, real),
+             aes(x = r, y = Inf, label = sprintf("simulated r = %.2f\np = %.3f", r, p)),
+             vjust = 1.2, hjust = -0.05, size = 3, inherit.aes = FALSE) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_fill_model(guide = "none") +
+  scale_colour_model(guide = "none") +
+  labs(x = "Partner correlation (histogram = 999 shuffles, line = simulated)", y = "Shuffles")
+
+p_pairs + p_perm + plot_layout(widths = c(1, 1.8))
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+## Are the residuals spatially correlated?
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 305–322: the random-intercept bubble map (`ranef(mod2)` on Lat/Long). The residual map, lineup and Moran's I have no counterpart.
+:::
+The same three checks as stages 1 and 2, now for all five fits to this one data set. First, the location-mean Pearson residuals on the map:
+
+```{r, fig.width=15, fig.height=10}
+ggplot(cmp_sp$loc, aes(x = Long, y = Lat, colour = flavor,
+                       size = abs(mean_pearson), shape = mean_pearson >= 0)) +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_point(stroke = 1) +
+  facet_wrap(~ flavor, ncol = 3) +
+  scale_colour_model(guide = "none") +
+  scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 1),
+                     labels = c(`TRUE` = "more than predicted", `FALSE` = "fewer than predicted"),
+                     name = NULL) +
+  scale_size_area(max_size = 6, name = "|mean Pearson residual|") +
+  scale_x_continuous(n.breaks = 3) +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(cmp_sp$loc$Long) + c(-0.004, 0.004),
+           ylim = range(cmp_sp$loc$Lat) + c(-0.004, 0.004)) +
+  theme(panel.spacing.x = unit(3, "lines")) +
+  labs(caption = "Map tiles © OpenStreetMap contributors")
+```
+
+Then the lineup: the middle map is the location intercepts from the model that ignores space (`GAM`), and the other eight are the same 24 values shuffled among the locations:
+
+```{r, fig.width=10, fig.height=9}
+set.seed(215)
+
+lineup <- cmp_sp$loc |>
+  filter(flavor == "GAM") |>
+  select(LocationID, Long, Lat, ranef) |>
+  list() |>
+  rep(9) |>
+  imap(\(d, i) if (i == 5) d else mutate(d, ranef = sample(ranef))) |>   # panel 5 (the middle) = this data set
+  bind_rows(.id = "panel") |>
+  mutate(panel = factor(panel, levels = 1:9))
+
+ggplot(lineup, aes(x = Long, y = Lat, size = abs(ranef), shape = ranef >= 0)) +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_point(colour = model_palette[["GAM"]], stroke = 1) +
+  facet_wrap(~ panel, ncol = 3,
+             labeller = as_labeller(\(x) if_else(x == "5", "Simulated", "Shuffled"))) +
+  scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 1),
+                     labels = c(`TRUE` = "more than predicted", `FALSE` = "fewer than predicted"),
+                     name = NULL) +
+  scale_size_area(max_size = 6, name = "|random intercept|") +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(lineup$Long) + c(-0.002, 0.002),
+           ylim = range(lineup$Lat) + c(-0.002, 0.002)) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank(),
+        axis.title = element_blank()) +
+  labs(caption = "Map tiles © OpenStreetMap contributors")
+```
+
+And Moran's I with 999 shuffles (dashed line at −1/(n − 1), the expected value with no spatial pattern):
+
+```{r, fig.width=12, fig.height=6}
+set.seed(215)
+moran_sp <- cmp_sp$loc |>
+  group_by(flavor) |>
+  group_modify(\(d, k) {
+    mc <- moran.mc(d$mean_pearson, nb_weights, nsim = 999)
+    tibble(I = mc$res, real = seq_along(mc$res) == length(mc$res), p = mc$p.value)
+  }) |>
+  ungroup()
+
+ggplot(filter(moran_sp, !real), aes(x = I, fill = flavor)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  geom_vline(xintercept = -1 / (length(nb_weights$neighbours) - 1), linetype = 2) +
+  geom_vline(data = filter(moran_sp, real), aes(xintercept = I, colour = flavor), linewidth = 1) +
+  geom_label(data = filter(moran_sp, real), aes(x = I, y = Inf, label = sprintf("simulated I = %.2f\np = %.3f", I, p)),
+             vjust = 1.2, hjust = -0.05, size = 3, inherit.aes = FALSE) +
+  facet_wrap(~ flavor, ncol = 3) +
+  scale_fill_model(guide = "none") +
+  scale_colour_model(guide = "none") +
+  xlab("Moran's I of the location-mean Pearson residuals (histogram = 999 shuffles, line = this data set)") +
+  ylab("Shuffles")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+## Many data sets: ramping up the spatial complexity
+
+As in stage 2, the whole thing (simulate → fit all five → Moran's I on each) is repeated 200 times at each complexity level: none, low, medium and high. Everything else (the hump, β, σ, φ, the field's total SD of 1, the design, and both bases) is held fixed; each replicate draws fresh layers. For every replicate and model this records the coefficient estimates, SEs and 95% CIs, Moran's I and the partner correlation, each with a 499-shuffle permutation p-value. The table is saved to `results/stage3_ramp.rds` and only recomputed when `rerun` is `TRUE` or the file is missing. To recompute, start Quarto or R with `OPENBLAS_NUM_THREADS=1` (see the README); otherwise it runs many times slower.
+
+```{r}
+#| label: ramp
+ramp_file <- file.path(results_dir, "stage3_ramp.rds")
+
+if (rerun || !file.exists(ramp_file)) {
+  grid <- expand_grid(level = complexity$level, rep = 1:200) |>
+    as.data.frame()
+
+  ramp <- run_replicates(grid, \(s) {
+    d <- sim_spatial(stage1$design, stage1$truth, stage1$locations,
+                     shares = complexity$shares[[match(s$level, complexity$level)]]) |>
+      add_spatial(sp_setup, stage1$locations)
+    summarise_replicate(fit_spatial(d), d, stage1$truth, nb_weights, nsim = 499)
+  })
+  saveRDS(ramp, ramp_file)
+}
+
+ramp <- readRDS(ramp_file)
+ramp <- map(ramp, \(tab) tab |>
+  left_join(select(complexity, level, complexity = label), by = "level"))
+ramp$checks |> count(complexity, flavor, name = "replicates")
+```
+
+### How often do the tests reject?
+
+The percent of replicates in which each test rejects "independent residuals" (p < 0.05), by complexity and model, with 95% Monte Carlo intervals. Left: the partner correlation (are a tree's two residuals alike?). Right: Moran's I (are nearby trees' residuals alike?). At "none" there is no spatial field, so every Moran's I rejection there is a false positive. The dashed line is at 5%, the false-positive rate each test is designed to have when residuals really are independent.
+
+```{r, fig.width=9, fig.height=4}
+ramp$checks |>
+  pivot_longer(c(partner_p, moran_p), names_to = "test", values_to = "p") |>
+  mutate(test = factor(test, levels = c("partner_p", "moran_p"),
+                       labels = c("Partner correlation (clumped within a tree)",
+                                  "Moran's I (alike between nearby trees)"))) |>
+  group_by(complexity, flavor, test) |>
+  summarise(reject_rate = mean(p < 0.05), n = n(), .groups = "drop") |>
+  mutate(se = sqrt(reject_rate * (1 - reject_rate) / n)) |>
+  ggplot(aes(x = complexity, y = reject_rate, colour = flavor, group = flavor)) +
+  geom_hline(yintercept = 0.05, linetype = 2) +
+  geom_pointrange(aes(ymin = pmax(reject_rate - 1.96 * se, 0), ymax = reject_rate + 1.96 * se),
+                  position = position_dodge(width = 0.4)) +
+  geom_line(position = position_dodge(width = 0.4)) +
+  scale_y_continuous(labels = scales::label_percent(), limits = c(0, NA)) +
+  facet_wrap(~ test) +
+  scale_colour_model(name = NULL) +
+  xlab("Spatial complexity of the true field") +
+  ylab("% of replicates where the test\nrejects \"independent residuals\" (p < 0.05)") +
+  labs(caption = "Dashed line: 5%, the false-positive rate the test is designed to have")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+### Estimates against the truth
+
+Every replicate's estimate of `Aspect` and `DistReef`, by complexity and model. The dashed line is the true value used in the simulation.
+
+```{r, fig.width=11, fig.height=5}
+ggplot(filter(ramp$coef, term %in% betas$term),
+       aes(x = complexity, y = estimate, fill = flavor)) +
+  geom_hline(data = betas, aes(yintercept = truth), linetype = 2) +
+  geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
+  facet_wrap(~ term, scales = "free_y") +
+  scale_fill_model(name = NULL) +
+  xlab("Spatial complexity of the true field") +
+  ylab("Estimate (log scale)")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+### Coverage of the 95% intervals
+
+The share of replicates whose 95% CI contains the true coefficient, by term, complexity and model. The dashed line is at 0.95; with 200 replicates per point, the Monte Carlo standard error of a coverage near 0.95 is about 0.015. Replicates where a model returned no standard error (a non-invertible Hessian) are left out of that model's coverage; the table below the figure counts them.
+
+```{r, fig.width=11, fig.height=4.5}
+ramp$coef |>
+  filter(term %in% betas$term) |>
+  group_by(complexity, flavor, term) |>
+  summarise(coverage = mean(covered, na.rm = TRUE), .groups = "drop") |>
+  ggplot(aes(x = complexity, y = coverage, colour = flavor, group = flavor)) +
+  geom_hline(yintercept = 0.95, linetype = 2) +
+  geom_point(position = position_dodge(width = 0.3)) +
+  geom_line(position = position_dodge(width = 0.3)) +
+  facet_wrap(~ term) +
+  scale_colour_model(name = NULL) +
+  xlab("Spatial complexity of the true field") +
+  ylab("95% CI coverage")
+
+ramp$coef |>
+  filter(term %in% betas$term) |>
+  group_by(complexity, flavor) |>
+  summarise(no_se = sum(is.na(covered)), replicates = n_distinct(rep), .groups = "drop") |>
+  filter(no_se > 0)
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
