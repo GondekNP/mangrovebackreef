@@ -141,6 +141,25 @@ ggplot(cmp_nl$obs, aes(x = TreePerimeter, y = pearson, colour = flavor)) +
 
 :::
 
+## From the linear part to the counts
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 241–243 (`fitted(mod2)` and `predict(mod2, type = "link")`, the response and link scales) and 512–521 (`predict(mod2, newdata = ..., type = "response")`).
+:::
+
+Every model here is a GLM(M) with three parts: a **linear part** η = Xβ (plus any random-effect terms) on the log scale, a **link** that turns it into a predicted mean count μ = exp(η), and a **response distribution** that says how real counts scatter around μ: NB1, with variance μ(1 + φ). NB1's variance, μ(1 + φ), is a constant multiple of the mean: the same shape quasi-Poisson assumes (Var = θμ, with θ = 1 + φ). Unlike quasi-Poisson, NB1 is a full probability distribution, so it gives an actual spread of counts for each μ.
+
+The same three parts as in stages 1 and 2, now for the linear model and the GAM; for the GAM, the arrows also include the smooth's penalised wiggles (glmmTMB fits them as a random-effect term). One row per model: (1) η for each observation, from the fixed effects alone (open) to the full η (filled; arrows show what the random-effect terms add); (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ:
+
+```{r, fig.width=14, fig.height=7}
+plot_link_to_response(models_nl, sim_nl)
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
 # Part 2: a spatial field
 
 ## The truth: three levels of spatial complexity
@@ -360,6 +379,25 @@ imap(models_sp, \(m, flavor) tibble(
   range_m          = if (flavor == "Full covariance") full_range(m) else NA_real_,
   phi              = sigma(m)
 )) |> bind_rows()
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+### From the linear part to the counts
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 241–243 (`fitted(mod2)` and `predict(mod2, type = "link")`, the response and link scales) and 512–521 (`predict(mod2, newdata = ..., type = "response")`).
+:::
+
+Every model here is a GLM(M) with three parts: a **linear part** η = Xβ (plus any random-effect terms) on the log scale, a **link** that turns it into a predicted mean count μ = exp(η), and a **response distribution** that says how real counts scatter around μ: NB1, with variance μ(1 + φ). NB1's variance, μ(1 + φ), is a constant multiple of the mean: the same shape quasi-Poisson assumes (Var = θμ, with θ = 1 + φ). Unlike quasi-Poisson, NB1 is a full probability distribution, so it gives an actual spread of counts for each μ.
+
+The same three parts for all five spatial fits; the arrows now also include the spatial term (smooth surface, correlated field or basis coefficients). One row per model: (1) η for each observation, from the fixed effects alone (open) to the full η (filled; arrows show what the random-effect terms add); (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ:
+
+```{r, fig.width=14, fig.height=16}
+plot_link_to_response(models_sp, sim_sp)
 ```
 
 ::: {.callout-note appearance="simple"}

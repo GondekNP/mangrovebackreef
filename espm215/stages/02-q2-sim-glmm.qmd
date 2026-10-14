@@ -112,6 +112,25 @@ tibble(
 Both the location and no-location and no location are over-estimating variance (dispersion parameter) - I assume ~~1 here~~ actually, zero (both in `truth` and estimated) would imply that a good ol Poisson would do fine, and so we KNOW our data will be overdispersed (we simulated it that way). What's interesting is that the correctly parameterized model for the data (the location random effect) still seems to over-estimate the dispersion / variance within the negative binomial. ~~Is that an indication that the fit is not great (as in, we predict the wrong eta / mu for the Poisson response and therefore draw from a distribution centered in the wrong place?)~~ No, this is just a single simulation -  we will see later that this is not systematic for the random effects model.
 :::
 
+## From the linear part to the counts
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 241–243 (`fitted(mod2)` and `predict(mod2, type = "link")`, the response and link scales) and 512–521 (`predict(mod2, newdata = ..., type = "response")`).
+:::
+
+Every model here is a GLM(M) with three parts: a **linear part** η = Xβ (plus any random-effect terms) on the log scale, a **link** that turns it into a predicted mean count μ = exp(η), and a **response distribution** that says how real counts scatter around μ: NB1, with variance μ(1 + φ). NB1's variance, μ(1 + φ), is a constant multiple of the mean: the same shape quasi-Poisson assumes (Var = θμ, with θ = 1 + φ). Unlike quasi-Poisson, NB1 is a full probability distribution, so it gives an actual spread of counts for each μ.
+
+The same three parts for the simulated data set. One row per model: (1) η for each observation, from the fixed effects alone (open) to the full η (filled; arrows show what the random-effect terms add); (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ:
+
+```{r, fig.width=14, fig.height=7}
+plot_link_to_response(models1, sim1)
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
 ## Residuals against the covariates
 
 ::: {.callout-note collapse="true" title="Original code"}
@@ -304,7 +323,7 @@ The observed Moran's I of the data we generate is lower than the ~~theoretical m
 
 ## Many data sets: ramping up the site variance
 
-One data set is one draw. Here the whole thing (simulate → fit both models → Moran's I on each) is repeated 250 times at each of six values of σ, the standard deviation of the location intercepts: 0 (no location effect at all), 0.2, the stage-1 estimate (≈ 0.41), 0.8, 1.2 and 1.6. Everything else (β, φ, the design) stays at the stage-1 truth, and nothing is spatial at any σ.
+One data set is one draw. Here the whole thing (simulate → fit both models → Moran's I on each) is repeated 250 times at each of six values of σ, the standard deviation of the location intercepts: 0 (no location effect at all), 0.2, the stage-1 estimate (≈ 0.41), 0.8, 1.2 and 1.6. Everything else (β, φ, the design) stays at the stage-1 truth, and nothing is spatial at any σ. On every ramp figure, the purple dashed line marks σ̂ ≈ 0.41, the value estimated from the real data; the values above it are deliberately larger than the real data support.
 
 For every replicate and model this records the coefficient estimates, SEs and 95% CIs (and whether each CI contains the true value), and Moran's I and the partner correlation, each with a 499-shuffle permutation p-value. The table is saved to `results/stage2_ramp.rds` and only recomputed when `rerun` is `TRUE` or the file is missing.
 
@@ -325,6 +344,17 @@ if (rerun || !file.exists(ramp_file)) {
 }
 
 ramp <- readRDS(ramp_file)
+
+# The real data's site SD (the stage-1 estimate), marked on every ramp figure.
+# real_pos is its position on the figures that use sigma as categories.
+sigma_real <- stage1$truth$value[stage1$truth$type == "sigma"]
+real_pos   <- match(round(sigma_real, 2), sort(unique(round(ramp$checks$sigma, 2))))
+real_sigma <- function(x, discrete = FALSE) list(
+  if (discrete) scale_x_discrete(),   # lets the line sit under the boxplots on a categorical axis
+  geom_vline(xintercept = x, colour = "#7B3294", linetype = "dashed", linewidth = 0.8),
+  annotate("label", x = x, y = Inf, vjust = 1.2, size = 2.8, colour = "#7B3294",
+           label = sprintf("real data: σ̂ = %.2f", sigma_real))
+)
 ramp$checks |> count(sigma, flavor, name = "replicates")
 ```
 
@@ -342,6 +372,7 @@ ramp$checks |>
   summarise(reject_rate = mean(p < 0.05), n = n(), .groups = "drop") |>
   mutate(se = sqrt(reject_rate * (1 - reject_rate) / n)) |>
   ggplot(aes(x = sigma, y = reject_rate, colour = flavor)) +
+  real_sigma(sigma_real) +
   geom_hline(yintercept = 0.05, linetype = 2) +
   geom_pointrange(aes(ymin = pmax(reject_rate - 1.96 * se, 0), ymax = reject_rate + 1.96 * se),
                   position = position_dodge(width = 0.05)) +
@@ -369,6 +400,7 @@ The distribution of the observed Moran's I across replicates, by σ and model, w
 
 ```{r, fig.width=8, fig.height=4}
 ggplot(ramp$checks, aes(x = factor(round(sigma, 2)), y = moran_I, fill = flavor)) +
+  real_sigma(real_pos, discrete = TRUE) +
   geom_hline(yintercept = -1 / 23, linetype = 2) +
   geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
   stat_summary(fun = mean, geom = "point", shape = 23, size = 2.5,
@@ -398,6 +430,7 @@ Both models have to account for the extra variation between sites somewhere. The
 phi_true <- stage1$truth$value[stage1$truth$type == "phi"]
 
 p_phi <- ggplot(ramp$checks, aes(x = factor(round(sigma, 2)), y = phi_hat, fill = flavor)) +
+  real_sigma(real_pos, discrete = TRUE) +
   geom_hline(yintercept = phi_true, linetype = 2) +
   geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
   scale_y_log10() +
@@ -407,6 +440,7 @@ p_phi <- ggplot(ramp$checks, aes(x = factor(round(sigma, 2)), y = phi_hat, fill 
 
 sigma_checks <- ramp$checks |> filter(flavor == "Location RE")
 p_sigma <- ggplot(sigma_checks, aes(x = factor(round(sigma, 2)), y = sigma_hat)) +
+  real_sigma(real_pos, discrete = TRUE) +
   geom_boxplot(fill = model_palette[["Location RE"]], alpha = 0.6, outlier.size = 0.5) +
   geom_point(data = distinct(sigma_checks, sigma), aes(x = factor(round(sigma, 2)), y = sigma),
              shape = 4, size = 4, stroke = 1.5, colour = "red") +
@@ -432,6 +466,7 @@ Every replicate's estimate of each coefficient, by σ and model. The dashed line
 
 ```{r, fig.width=10, fig.height=6}
 ggplot(ramp$coef, aes(x = factor(round(sigma, 2)), y = estimate, fill = flavor)) +
+  real_sigma(real_pos, discrete = TRUE) +
   geom_hline(data = betas, aes(yintercept = truth), linetype = 2) +
   geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
   facet_wrap(~ term, scales = "free_y") +
@@ -570,6 +605,7 @@ ramp$coef |>
   group_by(sigma, flavor, term) |>
   summarise(coverage = mean(covered), .groups = "drop") |>
   ggplot(aes(x = sigma, y = coverage, colour = flavor)) +
+  real_sigma(sigma_real) +
   geom_hline(yintercept = 0.95, linetype = 2) +
   geom_point() +
   geom_line() +
