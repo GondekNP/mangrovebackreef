@@ -11,10 +11,9 @@ Prep workspace for two ESPM 215 paper discussions on **Wed Oct 14, 2026**:
 |-------|------|-------|-------|------|---------------|
 | 1 | [stages/01-q2-real-glmm.qmd](stages/01-q2-real-glmm.qmd) | real data | GLMM (`mod2`) | — | Fri Oct 9 |
 | 2 | [stages/02-q2-sim-glmm.qmd](stages/02-q2-sim-glmm.qmd) | `mod2` + iid site effects | GLMM | iid σ | Sat Oct 10 |
-| 3 | [stages/03-q2-sim-nonlinear-gam.qmd](stages/03-q2-sim-nonlinear-gam.qmd) | stage 2 + a nonlinear term | GAM | nonlinearity strength | Sun Oct 11 |
-| 4 | [stages/04-q2-sim-spatial-basis.qmd](stages/04-q2-sim-spatial-basis.qmd) | stage 3 + a spatial field | GAM + Hefley spatial basis | spatial variance and range | Mon Oct 12 |
+| 3 | [stages/03-q2-sim-gam-spatial-basis.qmd](stages/03-q2-sim-gam-spatial-basis.qmd) | stage 2 + a nonlinear TreePerimeter effect, then + a spatial field | GAM; then s(x, y), full covariance, eigen basis, knot basis | field variance (SD 1) split across 600 / 200 / 60 m layers | Sun Oct 11 |
 
-Tue Oct 13: build the talk from the finished stage documents and the figures saved in `results/`. Q5's shoaling GAMM is used only as motivation for stage 3; it isn't refit.
+Tue Oct 13: build the talk from the finished stage documents and the figures saved in `results/`. Q5's shoaling GAMM is pointed to as motivation for stage 3; it isn't refit.
 
 Pencil-and-paper work goes in [notes/derivations.qmd](notes/derivations.qmd). Everything here is scaffolding: each `# TODO:` marks work still to do.
 
@@ -31,13 +30,15 @@ espm215/
   archive/    earlier Q1-based work, kept for reference (not rendered)
 ```
 
-**Stage 1 → simulations.** Stage 1 saves `results/stage1.rds`: a list of three tidy tibbles, `truth` (type, parameter, value: `mod2`'s β, σ_LocationID and NB1 φ), `design` (48 rows, no response) and `locations` (24 rows, with x/y in UTM 60S metres). It's gitignored, so render stage 1 before stages 2–4.
+**Stage 1 → simulations.** Stage 1 saves `results/stage1.rds`: a list of three tidy tibbles, `truth` (type, parameter, value: `mod2`'s β, σ_LocationID and NB1 φ), `design` (48 rows, no response) and `locations` (24 rows, with x/y in UTM 60S metres). It's gitignored, so render stage 1 before stages 2 and 3.
 
 **Paths.** `here` isn't installed, so paths are relative. Quarto runs each chunk with the working directory set to the `.qmd`'s folder. From `stages/`, use `source("../sim/_load.R")`. It defines `espm215_root`, `data_dir` (the repo's `data/`) and `results_dir`. Prefer `file.path(results_dir, ...)` to absolute paths, so the files work in any checkout.
 
 ## Rendering
 
 The Quarto project is at the repo root ([`_quarto.yml`](../_quarto.yml)), so every document can find `_extensions/`. Its `render:` list covers `slides/*.qmd` (the existing template deck), `espm215/stages/*.qmd` and `espm215/notes/*.qmd`. Nothing else in the repo is rendered. Quarto starts R from the repo root, so `renv` is active during renders. If you run chunks interactively, start R from the repo root too.
+
+**Recomputing a ramp** (`rerun <- TRUE`, or a missing `results/stageN_ramp.rds`): start Quarto or R with `OPENBLAS_NUM_THREADS=1`, e.g. `OPENBLAS_NUM_THREADS=1 quarto render espm215/stages/03-q2-sim-gam-spatial-basis.qmd`. The replicates already run one per core, and multithreaded OpenBLAS inside each worker oversubscribes the CPU, which makes stage 3's ramp many times slower.
 
 ```sh
 quarto render                                     # everything in the render list

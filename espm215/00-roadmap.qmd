@@ -1,0 +1,167 @@
+---
+title: "Roadmap — from Q2's GLMM to Hefley's basis functions"
+format:
+  html:
+    toc: true
+---
+
+A one-page map of the three stage notebooks: what data each one makes, which models it fits, and how the checks carry through. Use it to see where we are and why the next notebook exists.
+
+## The arc
+
+```{mermaid}
+flowchart LR
+  S1["<b>Stage 1</b><br/>Real Q2 data<br/>mod0 vs mod2"]
+  S2["<b>Stage 2</b><br/>Simulate from mod2<br/>iid site effects, nothing spatial"]
+  S3a["<b>Stage 3, part 1</b><br/>+ nonlinear TreePerimeter<br/>a smooth (GAM)"]
+  S3b["<b>Stage 3, part 2</b><br/>+ spatial field<br/>Hefley's models"]
+  S1 -- "fitted values become the truth<br/>(results/stage1.rds)" --> S2
+  S2 -- "swap the line for a curve" --> S3a
+  S3a -- "add a field that depends<br/>on where a tree is" --> S3b
+```
+
+Each stage keeps the previous stage's truth and adds one thing. The questions at every stage are the same: **do the checks see the problem**, and **do the estimates come out right** (bias, coverage)?
+
+## One pass through a stage
+
+```{mermaid}
+flowchart LR
+  T["Truth<br/>(β, σ, φ, curve, field)"] --> SIM["Simulate one<br/>data set<br/>(48 rows, 24 trees)"]
+  SIM --> FIT["Fit every model<br/>flavor"]
+  FIT --> CHK["Checks<br/>within a tree: by-tree residuals, partner correlation<br/>between trees: map, lineup, Moran's I"]
+  FIT --> EST["Estimates<br/>vs the truth"]
+  CHK --> REP{"Repeat 200–250×<br/>at each ramp level"}
+  EST --> REP
+  REP --> OUT["Rejection rate · bias · 95% CI coverage"]
+```
+
+## The data-generating processes
+
+All three simulations share one skeleton. A stage only changes what goes into the linear predictor η:
+
+```{mermaid}
+flowchart TB
+  subgraph eta["log μ = η  (one row per tree × aspect)"]
+    direction TB
+    B0["Intercept"]
+    TP["TreePerimeter<br/><i>stage 2: straight line β·x</i><br/><i>stage 3: hump peaking at 15 m</i>"]
+    AS["Aspect (e / s)"]
+    DR["DistReef (m)"]
+    A["Site effect a_j ~ N(0, σ²)<br/>iid: one per tree, shared by its two rows<br/><i>stage 2 ramp: σ = 0 … 1.6</i>"]
+    W["Spatial field w = broad + medium + fine layers<br/>(ranges 600 / 200 / 60 m), total SD 1<br/>nearby trees get similar values<br/><i>stage 3 part 2 only; complexity = how the variance is split across layers</i>"]
+  end
+  eta --> MU["μ = exp(η)"]
+  MU --> Y["Abundance ~ NB1(μ)<br/>Var = μ (1 + φ)"]
+```
+
+| | Stage 1 | Stage 2 | Stage 3, part 1 | Stage 3, part 2 |
+|---|---|---|---|---|
+| Data | real | simulated | simulated | simulated |
+| TreePerimeter | line | line | **hump** | hump |
+| Site effect a_j (iid) | (estimated) | **σ ramped** | σ from stage 1 | σ from stage 1 |
+| Spatial field w | — | — | — | **variance moved to finer layers** |
+| Code | — | `sim_glmm()` | `sim_nonlinear()` | `sim_spatial()` |
+
+## The models
+
+Every model is NB1 in glmmTMB. Model flavors keep the same colour in every notebook (`sim/model_compare.R`).
+
+```{mermaid}
+flowchart TB
+  subgraph st12["Stages 1 and 2"]
+    M0["<b>No location</b> (mod0)<br/>TreePerimeter + Aspect + DistReef"]
+    M2["<b>Location RE</b> (mod2)<br/>… + (1 | LocationID)"]
+    M0 -- "add the iid site term" --> M2
+  end
+  subgraph st3a["Stage 3, part 1"]
+    L["<b>Location RE</b><br/>straight line in TreePerimeter"]
+    G["<b>GAM</b><br/>s(TreePerimeter) + Aspect + DistReef<br/>+ (1 | LocationID)"]
+    L -- "line → smooth" --> G
+  end
+  subgraph st3b["Stage 3, part 2: GAM + one spatial term"]
+    G0["<b>GAM</b><br/>ignores space"]
+    SXY["<b>GAM + s(x, y)</b><br/>spline surface"]
+    FC["<b>Full covariance</b><br/>exp(pos + 0 | grp)"]
+    EB["<b>Eigen basis</b><br/>5 eigenvectors of R(200 m)"]
+    KB["<b>Knot basis</b><br/>6 Gaussian kernels"]
+    G0 --> SXY
+    G0 --> FC
+    G0 --> EB
+    G0 --> KB
+  end
+  M2 --> L
+  G --> G0
+```
+
+## Hefley's idea: two places to put space
+
+Space can go in the **mean** as basis functions, or in the **variance** as a correlation matrix. If the basis coefficients are random, α ~ N(0, σ²I), the two are the same model, because Zα has covariance σ²ZZ′.
+
+```{mermaid}
+flowchart LR
+  subgraph mean["In the mean (first-order)"]
+    direction TB
+    Zm["log μ = Xβ + Zα<br/>columns of Z = surfaces over the map"]
+  end
+  subgraph var["In the variance (second-order)"]
+    direction TB
+    Vm["log μ = Xβ + η<br/>η ~ N(0, σ² R(ϕ))<br/>R = correlation between every pair of sites"]
+  end
+  Zm <-->|"α ~ N(0, σ²I)  ⇒  Cov(Zα) = σ² ZZ′<br/>R = QΛQ′  ⇒  Z = QΛ^½ gives ZZ′ = R"| Vm
+```
+
+The three spatial models in stage 3 are steps along a single trade-off between exactness and cost:
+
+```{mermaid}
+flowchart LR
+  FC["<b>Full covariance</b><br/>n × n matrix R(ϕ), ϕ estimated<br/>exact, but cost grows like n³"]
+  EB["<b>Eigen basis</b><br/>keep the m leading eigenvectors<br/>Z = Q_m Λ_m^½ (24 × 5)<br/>ϕ fixed at 200 m"]
+  KB["<b>Knot basis</b><br/>Gaussian bump at each of k knots<br/>Z = kernel weights (24 × 6)<br/>local support, no n × n matrix at all"]
+  SXY["<b>s(x, y)</b><br/>spline basis + penalty<br/>(the GAM version of the same idea)"]
+  FC -- "reduced rank" --> EB
+  EB -- "skip the matrix:<br/>build Z directly" --> KB
+  KB -. "same machinery as" .-> SXY
+```
+
+The same "basis + penalty / random coefficients" idea is behind `s(TreePerimeter)` in part 1. That's why stage 3 starts with a one-dimensional smooth before it moves to a smooth over the map.
+
+## The checks: are the residuals independent?
+
+Every model here assumes each count's residual is independent of every other's. The design gives that assumption two ways to fail, and there is one check (plus a picture) for each:
+
+```{mermaid}
+flowchart TB
+  IID["Assumption: residuals are independent"]
+  IID --> W["<b>Within a tree</b><br/>the east and south counts<br/>share something unmodelled"]
+  IID --> B["<b>Between trees</b><br/>nearby trees share<br/>something unmodelled"]
+  W --> WP["Picture: residuals by tree<br/>(authors' boxplot, by LocationID)"]
+  W --> WT["Test: partner correlation<br/>cor(east, south residual)<br/>vs 999 shuffled pairings"]
+  B --> BP["Pictures: residual map,<br/>lineup of 9 maps"]
+  B --> BT["Test: Moran's I<br/>4 nearest neighbours<br/>vs 999 shuffled maps"]
+  WT -.->|"what an omitted site effect<br/>creates (stage 2)"| S2["Stage 2"]
+  BT -.->|"what a spatial field<br/>creates (stage 3, part 2)"| S3["Stage 3, part 2"]
+```
+
+Both tests use the same logic: compute a correlation with a "neighbour" (the other count at the same tree, or the nearest trees), then shuffle who the neighbours are to see what that correlation looks like when it is meaningless.
+
+```{mermaid}
+flowchart LR
+  R["Pearson residuals<br/>(one per row, 48)"] --> PR["East vs south<br/>per tree (24 pairs)"]
+  PR --> PT["Partner correlation"]
+  R --> LM["Mean per tree<br/>(24 values)"]
+  LM --> MAP["Map"]
+  LM --> MI["Moran's I"]
+  RE["Location intercepts"] --> LU["Lineup"]
+  C["Coefficients ± 95% CI"] --> TR["vs the true β:<br/>bias and coverage"]
+```
+
+## Where things live
+
+| | File |
+|---|---|
+| Stage 1 | [stages/01-q2-real-glmm.qmd](stages/01-q2-real-glmm.qmd) |
+| Stage 2 | [stages/02-q2-sim-glmm.qmd](stages/02-q2-sim-glmm.qmd) |
+| Stage 3 | [stages/03-q2-sim-gam-spatial-basis.qmd](stages/03-q2-sim-gam-spatial-basis.qmd) |
+| Simulators | `sim/sim_glmm.R` → `sim/sim_nonlinear.R` → `sim/sim_spatial.R` |
+| Fits and replicates | `sim/replicate.R` (`fit_stage2()`, `fit_nonlinear()`, `fit_spatial()`, `run_replicates()`) |
+| Colours and tidy diagnostics | `sim/model_compare.R` |
