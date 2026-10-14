@@ -17,6 +17,7 @@ library(GGally)
 library(ggspatial)
 library(sf)
 library(spdep)
+library(patchwork)
 
 HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
                       header = TRUE, dec = ".")
@@ -24,6 +25,9 @@ HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
 
 ## The data
 
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 16–19 (`read.table`), 49–50 and 100–102 (`pairs()` collinearity plots; ggpairs here) and 52–61 (the collinearity comments).
+:::
 First, let's see what we are working with:
 ```{r}
 head(HTrees2)
@@ -67,6 +71,9 @@ From the above, it seems that:
 
 ## The models
 
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 232–236, `mod2 <- glmmTMB(...)` and `summary(mod2)`. `mod0` has no counterpart; the authors' alternative is the Poisson GLM `mod1`, lines 157–162.
+:::
 Now fitting the model:
 ```{r}
 mod2 <- glmmTMB(Abundance ~ TreePerimeter + Aspect + DistReef
@@ -93,6 +100,9 @@ cmp <- compare_models(list("No location" = mod0, "Location RE" = mod2), HTrees2)
 
 ## Residuals
 
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 241–250 (Pearson residuals vs fitted values for `mod2`), and residuals vs each covariate: 261–267 (`TreePerimeter`), 270–275 (`Aspect`), 278–284 (`DistIsland`), 287–293 (`DistReef`) and 296–302 (`WMI`).
+:::
 Let's look at the linear part of the model and it's associated residuals first:
 
 ```{r, fig.width=10, fig.height=4}
@@ -106,20 +116,98 @@ ggplot(cmp$obs, aes(x = fitted, y = pearson, colour = flavor)) +
   xlab("Fitted values")
 ```
 
-The authors check Pearson residuals against every covariate (`TreePerimeter`, `Aspect`, `DistIsland`, `DistReef`, `WMI`) and call them all "ok". For now I'm only keeping `DistReef`, since it's the one covariate that is basically a spatial coordinate - if there's leftover spatial structure, this is one of the first places I'd expect it to show up once we start simulating:
+The authors check Pearson residuals against every covariate (`TreePerimeter`, `Aspect`, `DistIsland`, `DistReef`, `WMI`) and call them all "ok". If the residuals are independent of the inputs, they should show no trend against any of them, whether or not the covariate is in the model (`DistIsland` and `WMI` aren't). Here are the four continuous ones, with a loess smooth and the correlation between residual and covariate in each panel (`Aspect` gets its own boxplot in the next section). `DistReef` is the one that is basically a spatial coordinate - if there's leftover spatial structure, this is one of the first places I'd expect it to show up once we start simulating:
 
-```{r, fig.width=10, fig.height=4}
-ggplot(cmp$obs, aes(x = DistReef, y = pearson, colour = flavor)) +
-  geom_point() +
+```{r, fig.width=12, fig.height=6, message=FALSE}
+resid_cov <- cmp$obs |>
+  select(flavor, pearson, TreePerimeter, DistIsland, DistReef, WMI) |>
+  pivot_longer(-c(flavor, pearson), names_to = "covariate", values_to = "value") |>
+  mutate(covariate = factor(covariate, levels = c("TreePerimeter", "DistIsland", "DistReef", "WMI")))
+
+# Pearson correlation between residual and covariate, with its p-value
+resid_cor <- resid_cov |>
+  group_by(flavor, covariate) |>
+  summarise(r = cor(value, pearson), p = cor.test(value, pearson)$p.value, .groups = "drop")
+
+ggplot(resid_cov, aes(x = value, y = pearson, colour = flavor)) +
   geom_hline(yintercept = 0, linetype = 2) +
-  facet_wrap(~ flavor) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 0.7) +
+  geom_label(data = resid_cor, aes(x = -Inf, y = Inf, label = sprintf("r = %.2f, p = %.2f", r, p)),
+             hjust = -0.05, vjust = 1.2, size = 3, inherit.aes = FALSE) +
+  facet_grid(flavor ~ covariate, scales = "free_x") +
   scale_colour_model(guide = "none") +
-  ylab("Pearson residuals") +
-  xlab("Distance from Reef (m)")
+  labs(x = "Covariate value", y = "Pearson residuals",
+       caption = "Line: loess smooth. r: Pearson correlation between residual and covariate.")
 ```
+
+## Are the residuals clumped within a tree?
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 270–275, `boxplot(E1 ~ Aspect)`: the same residual boxplot, grouped by `Aspect` rather than `LocationID`. The partner correlation has no counterpart.
+:::
+The models assume every count's residual is independent of every other's. Each tree here was counted twice (east and south), so the most basic way that can fail is for a tree's two residuals to move together: if something about a tree that the model doesn't know about raises or lowers both counts, both residuals land on the same side of zero. That's clumping *within* a site; the spatial checks further down ask about similarity *between* nearby sites.
+
+First, the authors' residual boxplot (they plot `boxplot(E1 ~ Treatment)` and `boxplot(E1 ~ Aspect)`), here by `LocationID`: each box spans one tree's two Pearson residuals (points: e = east, s = south), with trees ordered from the lowest to the highest mean residual within each model:
+
+```{r, fig.width=11, fig.height=4.2}
+cmp$obs |>
+  group_by(flavor, LocationID) |>
+  mutate(site_mean = mean(pearson)) |>
+  group_by(flavor) |>
+  mutate(site_rank = dense_rank(site_mean)) |>
+  ungroup() |>
+  ggplot(aes(x = site_rank, y = pearson, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_boxplot(aes(group = site_rank), outlier.shape = NA) +
+  geom_point(aes(shape = Aspect), size = 2) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_colour_model(guide = "none") +
+  scale_shape_manual(values = c(e = 16, s = 1), name = "Aspect") +
+  scale_x_continuous(breaks = NULL) +
+  xlab("Trees (LocationID), ordered by mean residual") +
+  ylab("Pearson residuals")
+```
+
+Then one number for the same idea, the **partner correlation**: the correlation between each tree's east residual and its south residual, across the 24 trees (left). To judge it, the same shuffle as the Moran's I test: pair each east residual with a randomly chosen tree's south residual instead, 999 times, so that partners are unrelated by construction (right; dashed line at 0, line = real):
+
+```{r, fig.width=12, fig.height=4.9}
+set.seed(215)
+partner_cmp <- partner_check(list("No location" = mod0, "Location RE" = mod2), HTrees2, nsim = 999)
+
+p_pairs <- ggplot(partner_cmp$pairs, aes(x = r_e, y = r_s, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_point(size = 2) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_colour_model(guide = "none") +
+  labs(x = "East residual", y = "South residual (same tree)")
+
+p_perm <- ggplot(filter(partner_cmp$perm, !real), aes(x = r, fill = flavor)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_vline(data = filter(partner_cmp$perm, real), aes(xintercept = r, colour = flavor), linewidth = 1) +
+  geom_label(data = filter(partner_cmp$perm, real),
+             aes(x = r, y = Inf, label = sprintf("real r = %.2f\np = %.3f", r, p)),
+             vjust = 1.2, hjust = -0.05, size = 3, inherit.aes = FALSE) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_fill_model(guide = "none") +
+  scale_colour_model(guide = "none") +
+  labs(x = "Partner correlation (histogram = 999 shuffles, line = real)", y = "Shuffles")
+
+p_pairs + p_perm + plot_layout(widths = c(1, 1.8))
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+Without a site term, a tree's east and south residuals agree far more than random pairings ever do. The two counts per tree aren't independent, which is exactly the dependence the authors' (1 | LocationID) is there to account for in random effect model. More specifically the two residuals at a tree are positively correlated across trees (r = 0.59), far more than random pairings produce.
+:::
 
 ## Are the residuals spatially correlated?
 
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 305–322: the random-intercept bubble map (`ranef(mod2)` on Lat/Long). The residual map, lineup and Moran's I have no counterpart.
+:::
 Next, the residuals on the map. Each point is one `LocationID`, showing the mean Pearson residual of its two rows. Filled = more fish than the model predicts, open = fewer, size = how much. This version works for any model (including the GAMs later, which won't have a random intercept to pull out):
 
 ```{r, fig.width=10, fig.height=5}
@@ -237,6 +325,9 @@ ggplot(filter(moran, !real), aes(x = I, fill = flavor)) +
 
 ## What changes between the models
 
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) line 236, `summary(mod2)` (the fixed-effect table).
+:::
 The fixed effects from both models, estimate ± 95% CI:
 
 ```{r, fig.width=8, fig.height=4}

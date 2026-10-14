@@ -10,52 +10,576 @@ engine: knitr
 
 ```{r}
 #| label: setup
+#| message: false
 source("../sim/_load.R")
+# plyr (loaded by the authors' scripts) masks dplyr's summarise()/count() if it's
+# attached in an interactive session; detach it so the dplyr versions are used
+if ("package:plyr" %in% search()) detach("package:plyr")
 library(tidyverse)
 library(glmmTMB)
+library(ggspatial)
 library(sf)
 library(spdep)
+library(patchwork)
 
 # Truth, design and locations saved by stage 1 (render stage 1 first)
 stage1 <- readRDS(file.path(results_dir, "stage1.rds"))
 stage1$truth
+
+# The real data, only for comparing against the simulations
+HTrees2 <- read.table(file.path(data_dir, "abundance.only.natural.trees.txt"),
+                      header = TRUE, dec = ".") |>
+  mutate(Aspect = as.factor(Aspect))
+
+# Same neighbour definition as stage 1: 4 nearest neighbours, distances in metres
+nb_weights <- moran_weights(stage1$locations, k = 4)
+
+# Set to TRUE to recompute the replicate tables instead of reading them from results/
+rerun <- FALSE
 ```
 
-## Simulate
+## Simulate one data set
 
-`sim_glmm()` in `sim/sim_glmm.R`: fresh a_j ~ N(0, σ²) for the 24 locations on every call, η = Xβ + a[location], NB1 counts. σ is an argument so the ramp can override it.
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 117–124, `xyplot(Abundance ~ TreePerimeter | factor(Aspect))` and lines 108–113, `boxplot(Abundance ~ factor(Aspect))`, on the real data. The simulation itself has no counterpart.
+:::
+`sim_glmm()` (in `sim/sim_glmm.R`) takes the real design (the same 24 trees × 2 aspects, with their real `TreePerimeter` and `DistReef`) and the stage-1 truth, draws a fresh random intercept for each location from N(0, σ²) with σ = σ̂ from stage 1, builds η = Xβ + a[location], and draws NB1 counts with variance μ(1 + φ). Nothing in this process depends on where a tree is, beyond what `DistReef` already carries in the fixed effects.
 
-```{r}
-#| label: sim-one
-# TODO: call sim_glmm() once with stage1$design and stage1$truth; compare with the real data.
+Here is one simulated data set next to the real one, summarised by aspect and plotted against tree perimeter:
+
+```{r, fig.width=10, fig.height=4}
+set.seed(215)
+sim1 <- sim_glmm(stage1$design, stage1$truth)
+
+both <- bind_rows(
+  real      = HTrees2 |> select(LocationID, Aspect, TreePerimeter, DistReef, Abundance),
+  simulated = sim1    |> select(LocationID, Aspect, TreePerimeter, DistReef, Abundance),
+  .id = "source"
+)
+
+both |>
+  group_by(source, Aspect) |>
+  summarise(mean = mean(Abundance), sd = sd(Abundance), min = min(Abundance),
+            max = max(Abundance), zeros = sum(Abundance == 0), .groups = "drop")
+
+ggplot(both, aes(x = TreePerimeter, y = Abundance, colour = source)) +
+  geom_point(size = 2, alpha = 0.8) +
+  facet_wrap(~ Aspect, labeller = as_labeller(c(e = "Aspect e", s = "Aspect s"))) +
+  scale_colour_discrete()
 ```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+The simulated dataset looks, at least at first blush, to match the patterns of the real dataset. This makes sense because we are simulating data using the fitted coeffecients of the model fit to the original dataset - if we collected a new dataset it likely wouldn't quite match (asymptotically) unless this model truly describes the data generating process.
+:::
 
 ## Fit both models
 
-The stage-1 pair: `mod2` and the no-location `mod0`, on the same simulated data. `compare_models()` gives the same A/B tables as stage 1.
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 232–236, `mod2 <- glmmTMB(...)` and `summary(mod2)`, refit here to simulated data.
+:::
+The stage-1 pair (`mod0` without the location term, `mod2` with it) refit to the simulated data set. The plot shows each model's estimates ± 95% CI, with the true values used in the simulation marked as black crosses:
+
+```{r, fig.width=8, fig.height=4}
+models1 <- fit_stage2(sim1)
+cmp1    <- compare_models(models1, sim1)
+
+betas <- stage1$truth |> filter(type == "beta") |> select(term = parameter, truth = value)
+
+ggplot(cmp1$coef, aes(x = estimate, y = term, colour = flavor)) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_pointrange(aes(xmin = lwr, xmax = upr), position = position_dodge(width = 0.5)) +
+  geom_point(data = betas, aes(x = truth, y = term), inherit.aes = FALSE,
+             shape = 4, size = 3, stroke = 1.2) +
+  scale_colour_model(name = NULL) +
+  xlab("Estimate (log scale); × = true value") +
+  ylab(NULL)
+
+```
 
 ```{r}
-#| label: fit
-# TODO: fit mod0 and mod2 to one simulated data set; compare_models().
+tibble(
+  parameter = c("sigma (LocationID)", "phi (NB1)"),
+  truth     = c(stage1$truth$value[stage1$truth$type == "sigma"], stage1$truth$value[stage1$truth$type == "phi"]),
+  `No location` = c(NA, sigma(models1[["No location"]])),
+  `Location RE` = c(attr(VarCorr(models1[["Location RE"]])$cond$LocationID, "stddev")[[1]], sigma(models1[["Location RE"]]))
+)
 ```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+Both the location and no-location and no location are over-estimating variance (dispersion parameter) - I assume ~~1 here~~ actually, zero (both in `truth` and estimated) would imply that a good ol Poisson would do fine, and so we KNOW our data will be overdispersed (we simulated it that way). What's interesting is that the correctly parameterized model for the data (the location random effect) still seems to over-estimate the dispersion / variance within the negative binomial. ~~Is that an indication that the fit is not great (as in, we predict the wrong eta / mu for the Poisson response and therefore draw from a distribution centered in the wrong place?)~~ No, this is just a single simulation -  we will see later that this is not systematic for the random effects model.
+:::
+
+## Residuals against the covariates
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 261–267 (`TreePerimeter`), 278–284 (`DistIsland`), 287–293 (`DistReef`) and 296–302 (`WMI`): Pearson residuals vs each covariate for `mod2`.
+:::
+
+Stage 1's residual check against each of the four continuous covariates, now for the simulated data set. `DistIsland` and `WMI` aren't in the simulation or the models; their real values are attached to each simulated row (by tree and aspect) so the residuals can be plotted against them. Loess smooth and the residual–covariate correlation in each panel:
+
+```{r, fig.width=12, fig.height=6, message=FALSE}
+resid_cov <- cmp1$obs |>
+  left_join(select(HTrees2, LocationID, Aspect, DistIsland, WMI), by = c("LocationID", "Aspect")) |>
+  select(flavor, pearson, TreePerimeter, DistIsland, DistReef, WMI) |>
+  pivot_longer(-c(flavor, pearson), names_to = "covariate", values_to = "value") |>
+  mutate(covariate = factor(covariate, levels = c("TreePerimeter", "DistIsland", "DistReef", "WMI")))
+
+# Pearson correlation between residual and covariate, with its p-value
+resid_cor <- resid_cov |>
+  group_by(flavor, covariate) |>
+  summarise(r = cor(value, pearson), p = cor.test(value, pearson)$p.value, .groups = "drop")
+
+ggplot(resid_cov, aes(x = value, y = pearson, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 0.7) +
+  geom_label(data = resid_cor, aes(x = -Inf, y = Inf, label = sprintf("r = %.2f, p = %.2f", r, p)),
+             hjust = -0.05, vjust = 1.2, size = 3, inherit.aes = FALSE) +
+  facet_grid(flavor ~ covariate, scales = "free_x") +
+  scale_colour_model(guide = "none") +
+  labs(x = "Covariate value", y = "Pearson residuals",
+       caption = "Line: loess smooth. r: Pearson correlation between residual and covariate.")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
+
+## Are the residuals clumped within a tree?
+
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 270–275, `boxplot(E1 ~ Aspect)`: the same residual boxplot, grouped by `Aspect` rather than `LocationID`. The partner correlation has no counterpart.
+:::
+The models assume every count's residual is independent of every other's. Each tree here was counted twice (east and south), so the most basic way that can fail is for a tree's two residuals to move together: if something about a tree that the model doesn't know about raises or lowers both counts, both residuals land on the same side of zero. That's clumping *within* a site; the spatial checks further down ask about similarity *between* nearby sites.
+
+First, the authors' residual boxplot (they plot `boxplot(E1 ~ Treatment)` and `boxplot(E1 ~ Aspect)`), here by `LocationID`: each box spans one tree's two Pearson residuals (points: e = east, s = south), with trees ordered from the lowest to the highest mean residual within each model:
+
+```{r, fig.width=11, fig.height=4.2}
+cmp1$obs |>
+  group_by(flavor, LocationID) |>
+  mutate(site_mean = mean(pearson)) |>
+  group_by(flavor) |>
+  mutate(site_rank = dense_rank(site_mean)) |>
+  ungroup() |>
+  ggplot(aes(x = site_rank, y = pearson, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_boxplot(aes(group = site_rank), outlier.shape = NA) +
+  geom_point(aes(shape = Aspect), size = 2) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_colour_model(guide = "none") +
+  scale_shape_manual(values = c(e = 16, s = 1), name = "Aspect") +
+  scale_x_continuous(breaks = NULL) +
+  xlab("Trees (LocationID), ordered by mean residual") +
+  ylab("Pearson residuals")
+```
+
+Then one number for the same idea, the **partner correlation**: the correlation between each tree's east residual and its south residual, across the 24 trees (left). To judge it, the same shuffle as the Moran's I test: pair each east residual with a randomly chosen tree's south residual instead, 999 times, so that partners are unrelated by construction (right; dashed line at 0, line = simulated):
+
+```{r, fig.width=12, fig.height=4.9}
+set.seed(215)
+partner_cmp1 <- partner_check(models1, sim1, nsim = 999)
+
+p_pairs <- ggplot(partner_cmp1$pairs, aes(x = r_e, y = r_s, colour = flavor)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_point(size = 2) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_colour_model(guide = "none") +
+  labs(x = "East residual", y = "South residual (same tree)")
+
+p_perm <- ggplot(filter(partner_cmp1$perm, !real), aes(x = r, fill = flavor)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_vline(data = filter(partner_cmp1$perm, real), aes(xintercept = r, colour = flavor), linewidth = 1) +
+  geom_label(data = filter(partner_cmp1$perm, real),
+             aes(x = r, y = Inf, label = sprintf("simulated r = %.2f\np = %.3f", r, p)),
+             vjust = 1.2, hjust = -0.05, size = 3, inherit.aes = FALSE) +
+  facet_wrap(~ flavor, ncol = 1) +
+  scale_fill_model(guide = "none") +
+  scale_colour_model(guide = "none") +
+  labs(x = "Partner correlation (histogram = 999 shuffles, line = simulated)", y = "Shuffles")
+
+p_pairs + p_perm + plot_layout(widths = c(1, 1.8))
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+:::
 
 ## Are the residuals spatially correlated?
 
-Same lineup and Moran's I as stage 1. Under this truth the answer is "no" by construction, so any flag is a false positive.
+::: {.callout-note collapse="true" title="Original code"}
+[`script_question2_abundance.R`](../../R%20code/script_question2_abundance.R) lines 305–322: the random-intercept bubble map (`ranef(mod2)` on Lat/Long). The residual map, lineup and Moran's I have no counterpart.
+:::
+The same three checks as stage 1, now on the simulated data set. There is no spatial effect here, by construction, so we should not conclude that there is (it would constitute a type I error / false positive on a test for spatial autocorrelation).
 
-```{r}
-#| label: diagnostics
-# TODO: lineup + Moran's I for one simulated data set (copy from stage 1).
+First, the location-mean Pearson residuals on the map for both models:
+
+```{r, fig.width=15, fig.height=9} 
+ggplot(cmp1$loc, aes(x = Long, y = Lat, colour = flavor,
+                     size = abs(mean_pearson), shape = mean_pearson >= 0)) +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_point(stroke = 1) +
+  facet_wrap(~ flavor) +
+  scale_colour_model(guide = "none") +
+  scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 1),
+                     labels = c(`TRUE` = "more than predicted", `FALSE` = "fewer than predicted"),
+                     name = NULL) +
+  scale_size_area(max_size = 6, name = "|mean Pearson residual|") +
+  scale_x_continuous(n.breaks = 3) +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(cmp1$loc$Long) + c(-0.004, 0.004),
+           ylim = range(cmp1$loc$Lat) + c(-0.004, 0.004)) +
+  theme(panel.spacing.x = unit(3, "lines")) +
+  labs(caption = "Map tiles © OpenStreetMap contributors")
 ```
 
-## Ramp: site variance without space
+Then the lineup: the middle map is the `mod2` random intercepts from the simulated data, and the other eight are the same 24 values shuffled among the locations:
 
-Sweep σ from 0 upward, many replicates per value: how often does Moran's I flag (false-positive rate), and how do the two models' SEs and coverage compare?
+```{r, fig.width=10, fig.height=9}
+set.seed(215)
+
+lineup <- cmp1$loc |>
+  filter(flavor == "Location RE") |>
+  select(LocationID, Long, Lat, ranef) |>
+  list() |>
+  rep(9) |>
+  imap(\(d, i) if (i == 5) d else mutate(d, ranef = sample(ranef))) |>   # panel 5 (the middle) = this data set
+  bind_rows(.id = "panel") |>
+  mutate(panel = factor(panel, levels = 1:9))
+
+ggplot(lineup, aes(x = Long, y = Lat, size = abs(ranef), shape = ranef >= 0)) +
+  annotation_map_tile(type = "osm", progress = "none",
+                      cachedir = file.path(results_dir, "basemap")) +
+  geom_point(colour = model_palette[["Location RE"]], stroke = 1) +
+  facet_wrap(~ panel, ncol = 3,
+             labeller = as_labeller(\(x) if_else(x == "5", "Simulated", "Shuffled"))) +
+  scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 1),
+                     labels = c(`TRUE` = "more than predicted", `FALSE` = "fewer than predicted"),
+                     name = NULL) +
+  scale_size_area(max_size = 6, name = "|random intercept|") +
+  coord_sf(crs = 4326, default_crs = 4326,
+           xlim = range(lineup$Long) + c(-0.002, 0.002),
+           ylim = range(lineup$Lat) + c(-0.002, 0.002)) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank(),
+        axis.title = element_blank()) +
+  labs(caption = "Map tiles © OpenStreetMap contributors")
+```
+
+And Moran's I with 999 shuffles, as in stage 1 (dashed line at −1/(n − 1), the expected value with no spatial pattern):
+
+```{r, fig.width=10, fig.height=4}
+set.seed(215)
+moran1 <- cmp1$loc |>
+  group_by(flavor) |>
+  group_modify(\(d, k) {
+    mc <- moran.mc(d$mean_pearson, nb_weights, nsim = 999)
+    tibble(I = mc$res, real = seq_along(mc$res) == length(mc$res), p = mc$p.value)
+  }) |>
+  ungroup()
+
+ggplot(filter(moran1, !real), aes(x = I, fill = flavor)) +
+  geom_histogram(bins = 30, alpha = 0.6) +
+  geom_vline(xintercept = -1 / (length(nb_weights$neighbours) - 1), linetype = 2) +
+  geom_vline(data = filter(moran1, real), aes(xintercept = I, colour = flavor), linewidth = 1) +
+  geom_label(data = filter(moran1, real), aes(x = I, y = Inf, label = sprintf("simulated I = %.2f\np = %.3f", I, p)),
+             vjust = 1.2, hjust = -0.05, size = 3, inherit.aes = FALSE) +
+  facet_wrap(~ flavor) +
+  scale_fill_model(guide = "none") +
+  scale_colour_model(guide = "none") +
+  xlab("Moran's I of the location-mean Pearson residuals (histogram = 999 shuffles, line = this data set)") +
+  ylab("Shuffles")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+The observed Moran's I of the data we generate is lower than the ~~theoretical mu~~ the expected value with no spatial pattern in both cases of the test statistic - which itself is interesting, but considering the small sample size maybe not that interesting (since there is no association with space at all, sometimes its the case - as it is here - that we simulate data that are more dissimilar than random compared to neighbors?). In either case we don't immediately observe autocorrelation here. 
+:::
+
+## Many data sets: ramping up the site variance
+
+One data set is one draw. Here the whole thing (simulate → fit both models → Moran's I on each) is repeated 250 times at each of six values of σ, the standard deviation of the location intercepts: 0 (no location effect at all), 0.2, the stage-1 estimate (≈ 0.41), 0.8, 1.2 and 1.6. Everything else (β, φ, the design) stays at the stage-1 truth, and nothing is spatial at any σ.
+
+For every replicate and model this records the coefficient estimates, SEs and 95% CIs (and whether each CI contains the true value), and Moran's I and the partner correlation, each with a 499-shuffle permutation p-value. The table is saved to `results/stage2_ramp.rds` and only recomputed when `rerun` is `TRUE` or the file is missing.
 
 ```{r}
 #| label: ramp
-# TODO: sweep sigma with the replicate loop (sim/replicate.R); save the ramp table to results_dir.
-# TODO: check E[I] = -1/(n-1) on the simulated data: the mean real Moran's I across
-#   replicates should land on -1/23 (no spatial truth here). To show it goes to 0
-#   as n grows, also simulate on designs with more locations (e.g. 12, 24, 48, 96).
+ramp_file <- file.path(results_dir, "stage2_ramp.rds")
+
+if (rerun || !file.exists(ramp_file)) {
+  sigma_true <- stage1$truth$value[stage1$truth$type == "sigma"]
+  grid <- expand_grid(sigma = c(0, 0.2, sigma_true, 0.8, 1.2, 1.6), rep = 1:250) |>
+    as.data.frame()
+
+  ramp <- run_replicates(grid, \(s) {
+    d <- sim_glmm(stage1$design, stage1$truth, sigma = s$sigma)
+    summarise_replicate(fit_stage2(d), d, stage1$truth, nb_weights, nsim = 499)
+  })
+  saveRDS(ramp, ramp_file)
+}
+
+ramp <- readRDS(ramp_file)
+ramp$checks |> count(sigma, flavor, name = "replicates")
 ```
+
+### How often do the tests reject?
+
+The percent of replicates in which each test rejects "independent residuals" (p < 0.05), by σ and model, with 95% Monte Carlo intervals. Left: the partner correlation (are a tree's two residuals alike?). Right: Moran's I (are nearby trees' residuals alike?). The site effects are drawn independently for each tree, so nothing in these data sets makes nearby trees alike: every Moran's I rejection is a false positive. The two counts at a tree do share that tree's site effect whenever σ > 0. The dashed line is at 5%, the false-positive rate each test is designed to have when residuals really are independent.
+
+```{r, fig.width=8, fig.height=4}
+ramp$checks |>
+  pivot_longer(c(partner_p, moran_p), names_to = "test", values_to = "p") |>
+  mutate(test = factor(test, levels = c("partner_p", "moran_p"),
+                       labels = c("Partner correlation (clumped within a tree)",
+                                  "Moran's I (alike between nearby trees)"))) |>
+  group_by(sigma, flavor, test) |>
+  summarise(reject_rate = mean(p < 0.05), n = n(), .groups = "drop") |>
+  mutate(se = sqrt(reject_rate * (1 - reject_rate) / n)) |>
+  ggplot(aes(x = sigma, y = reject_rate, colour = flavor)) +
+  geom_hline(yintercept = 0.05, linetype = 2) +
+  geom_pointrange(aes(ymin = pmax(reject_rate - 1.96 * se, 0), ymax = reject_rate + 1.96 * se),
+                  position = position_dodge(width = 0.05)) +
+  geom_line(position = position_dodge(width = 0.05)) +
+  scale_y_continuous(labels = scales::label_percent(), limits = c(0, NA)) +
+  facet_wrap(~ test) +
+  scale_colour_model(name = NULL) +
+  xlab("σ (true SD of location intercepts)") +
+  ylab("% of replicates where the test\nrejects \"independent residuals\" (p < 0.05)") +
+  labs(caption = "Dashed line: 5%, the false-positive rate the test is designed to have")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+
+~~When there is more variation between sites and it is unobserved (as in the case with the 'no location' model), we falsely reject the null using moran's I test far more frequently than we should (in fact, most of the time, we are rejecting the null when we should not). In fact, even with the random effect accounted for, we reject it occasionally, but the effect is less severe.~~
+
+Scratch that - I was falsely reading this is the average p value, which itself would be the wrong interpretation since it'd be backwards. It's instead the rate of type II error which should be around 5% by design and indeed it's about 5% or below. 
+
+:::
+
+### The observed Moran's I itself
+
+The distribution of the observed Moran's I across replicates, by σ and model, with the dashed line at −1/(n − 1) = −1/23 and the replicate mean marked with a diamond.
+
+```{r, fig.width=8, fig.height=4}
+ggplot(ramp$checks, aes(x = factor(round(sigma, 2)), y = moran_I, fill = flavor)) +
+  geom_hline(yintercept = -1 / 23, linetype = 2) +
+  geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2.5,
+               position = position_dodge(width = 0.75), show.legend = FALSE) +
+  scale_fill_model(name = NULL) +
+  xlab("σ (true SD of location intercepts)") +
+  ylab("Observed Moran's I")
+
+ramp$checks |>
+  group_by(sigma, flavor) |>
+  summarise(mean_I = mean(moran_I), se = sd(moran_I) / sqrt(n()), .groups = "drop") |>
+  mutate(expected = -1 / 23)
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+As we've repeatedly observed, we don't really observe any difference in the moran statistic, because the random effect we have introduced isn't spatial in any way, it is truly IID. But if we look at the next fig...
+:::
+
+### Where does the site-to-site variation go?
+
+Both models have to account for the extra variation between sites somewhere. The model with the site term has a place for it: σ̂, the spread of the site effects. The model without it has only φ, the NB1 dispersion, which also has to cover the ordinary count-to-count noise. Left: φ̂ for both models across replicates, by true σ (log scale; dashed line = the true φ). Right: σ̂ from the model with the site term, by true σ (red crosses = the true σ)
+
+*NOTE: The left panel here is on a log scale. This is NOT because of the link function or the scale of the response or anything of that nature - this is because, without the random effect of site to capture site-specific variation, the variance has to be enormous to adequately fit the data (because the variance response is _actually_ multiplicative for this model - see the below 'side experiment' for more information there)* 
+
+```{r, fig.width=12, fig.height=4.5}
+phi_true <- stage1$truth$value[stage1$truth$type == "phi"]
+
+p_phi <- ggplot(ramp$checks, aes(x = factor(round(sigma, 2)), y = phi_hat, fill = flavor)) +
+  geom_hline(yintercept = phi_true, linetype = 2) +
+  geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
+  scale_y_log10() +
+  scale_fill_model(name = NULL) +
+  labs(title = "Dispersion φ̂ (both models)",
+       x = "σ (true SD of location intercepts)", y = "φ̂ (log scale)")
+
+sigma_checks <- ramp$checks |> filter(flavor == "Location RE")
+p_sigma <- ggplot(sigma_checks, aes(x = factor(round(sigma, 2)), y = sigma_hat)) +
+  geom_boxplot(fill = model_palette[["Location RE"]], alpha = 0.6, outlier.size = 0.5) +
+  geom_point(data = distinct(sigma_checks, sigma), aes(x = factor(round(sigma, 2)), y = sigma),
+             shape = 4, size = 4, stroke = 1.5, colour = "red") +
+  labs(title = "Site spread σ̂ (model with the site term)",
+       x = "σ (true SD of location intercepts)", y = "σ̂")
+
+p_phi + p_sigma + plot_layout(widths = c(1.4, 1)) & theme(legend.position = "bottom")
+
+ramp$checks |>
+  group_by(sigma, flavor) |>
+  summarise(median_phi_hat = median(phi_hat), median_sigma_hat = median(sigma_hat), .groups = "drop") |>
+  mutate(true_phi = phi_true)
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+As mentioned above - variance is absolutely massive to account for the multiplicative effect of site, without accounting for it the model. The fitted model basically biases most predicted $mu$ to be more alike than they should (beta coefs on `DistReef`, `Aspect` and `TreePerimeter` are smaller than they should be, reducing their partial effects, and the intercept term is higher than it should be) and then manages the fit the data with a really, really big variance term. 
+:::
+
+### Estimates against the truth
+
+Every replicate's estimate of each coefficient, by σ and model. The dashed line is the true value used in the simulation.
+
+```{r, fig.width=10, fig.height=6}
+ggplot(ramp$coef, aes(x = factor(round(sigma, 2)), y = estimate, fill = flavor)) +
+  geom_hline(data = betas, aes(yintercept = truth), linetype = 2) +
+  geom_boxplot(alpha = 0.6, outlier.size = 0.5) +
+  facet_wrap(~ term, scales = "free_y") +
+  scale_fill_model(name = NULL) +
+  xlab("σ (true SD of location intercepts)") +
+  ylab("Estimate (log scale)")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+~~We observe that the beta coeffecients associated with other variables (`DistReef`, `TreePerimeter`, `Aspect`) has to capture the varation. Because it's actually random, by dumb luck some of our covariates are actually predictive of `Abundance` and since the variance has nowhere else to go, it is captured by these covariates directly. If we include a random effect of site, we see that the estimator is consistently unbiased even though variance is a bit higher (as again, when we fit the model, by dumb luck sometimes the spatial effect appears to be driven by the other env factors).~~
+
+Actually no that doesn't make sense since this is systematic bias, if it were really dumb luck it would still center the true parameter value. In fact what's happening (big time claude assisted because this was confusing to me):
+
+1) The 'properly' specified model is unbiased, because of course it is, we simulated the data using the exact data generating process we assume implicitly by using the model.  
+
+2) The 'improperly' specified model is biased for a specific reason - on the response scale, the random effect of site is multiplicative, and so the variance structure is essentially incorrectly specified. For both models we use `nb1`, which specifies variance as a linear function of the mean. But actually, since in the simulated data, we apply the random effect additively to a log-transformed resposne, the effect is multiplicative. This means that the variance structure is actually scaled by $\mu^2$, not as a function of $\mu$, and the misspecified variance term causes the estimated mu to be higher than expected such that, combined with the variance term, it can best fit the data. The model's best option then is to massively increase phi (dispersion), massively increase the intercept term (so that that variance is centered properly) and bias low the actual impact of the covariates we care about. 
+
+**Quite insidious! You'd interpret your actually interesting variables to have less of an effect than they should, by excluding the effect of site!**
+:::
+
+:::: {.callout-tip collapse="true"}
+## Side experiment: why are the no-location slopes biased the way they are?
+
+*A small experiment within the experiment, for anyone curious about the bias in the plot above. Not needed for the main thread; expand if you want the extra detail.*
+
+A one-off simulation to look at the two fits without sampling noise. Instead of the three real covariates there is a single made-up one, **tree suitability** (a continuous stand-in for the combined effect of `DistReef`, `Aspect`, `TreePerimeter` and the like), on a 0–3 scale. 3,000 sites × 2 counts, site effects with σ = 1.6 (the top of the ramp), NB1 counts with the stage-1 φ. The box at the top of the figure spells out the data-generating process and the variance each model assumes.
+
+- **Panel A**: the data in 12 groups of suitability (log of the average count in each group), the true relationship, and each model's fitted line. The site model's line describes a typical site (site effect = 0), so it is shifted up by σ̂²/2 to put both lines on the same "average across all trees" scale.
+- **Panel B**: for each candidate slope from 0.2 to 1.3, everything else in the model is refit (intercept and φ, plus σ for the site model) and the log-likelihood recorded. Each curve is shifted so its own maximum is 0; the top of each curve is the slope that model picks. The profile fits are saved to `results/stage2_suitability_profile.rds`.
+
+```{r, fig.width=13, fig.height=9.5}
+#| code-fold: true
+#| code-summary: "Show the code"
+set.seed(215)
+s_phi   <- stage1$truth$value[stage1$truth$type == "phi"]
+s_sigma <- 1.6
+s_beta  <- c(1.5, 1)       # intercept, slope for tree suitability
+
+suit <- tibble(site = 1:3000, suitability = runif(3000, 0, 3), a = rnorm(3000, 0, s_sigma)) |>
+  slice(rep(1:n(), each = 2)) |>
+  mutate(mu   = exp(s_beta[1] + s_beta[2] * suitability + a),
+         fish = rnbinom(n(), size = mu / s_phi, mu = mu))
+
+# Panel B: for each candidate slope, refit everything else and record the log-likelihood
+profile_file <- file.path(results_dir, "stage2_suitability_profile.rds")
+if (rerun || !file.exists(profile_file)) {
+  profile_at <- \(b) {
+    f_site <- glmmTMB(fish ~ 1 + offset(b * suitability) + (1 | site), family = nbinom1(), data = suit)
+    f_none <- glmmTMB(fish ~ 1 + offset(b * suitability), family = nbinom1(), data = suit)
+    tibble(slope  = b,
+           flavor = as_flavor(c("Location RE", "No location")),
+           logLik = c(as.numeric(logLik(f_site)), as.numeric(logLik(f_none))))
+  }
+  parallel::mclapply(seq(0.2, 1.3, by = 0.05), profile_at, mc.cores = parallel::detectCores()) |>
+    bind_rows() |>
+    saveRDS(profile_file)
+}
+suit_profile <- readRDS(profile_file) |>
+  group_by(flavor) |>
+  mutate(rel_logLik = logLik - max(logLik)) |>
+  ungroup()
+suit_peaks <- suit_profile |> group_by(flavor) |> slice_max(rel_logLik, n = 1)
+
+# Panel A: both fitted lines on the "average across all trees" scale
+suit_fits <- list(
+  "Location RE" = glmmTMB(fish ~ suitability + (1 | site), family = nbinom1(), data = suit),
+  "No location" = glmmTMB(fish ~ suitability, family = nbinom1(), data = suit)
+)
+suit_lines <- tibble(
+  flavor    = as_flavor(names(suit_fits)),
+  intercept = c(fixef(suit_fits[[1]])$cond[[1]] + attr(VarCorr(suit_fits[[1]])$cond$site, "stddev")[[1]]^2 / 2,
+                fixef(suit_fits[[2]])$cond[[1]]),
+  slope     = c(fixef(suit_fits[[1]])$cond[[2]], fixef(suit_fits[[2]])$cond[[2]]),
+  phi_hat   = c(sigma(suit_fits[[1]]), sigma(suit_fits[[2]]))
+)
+suit_bins <- suit |>
+  mutate(bin = cut(suitability, 12)) |>
+  group_by(bin) |>
+  summarise(suitability = mean(suitability), log_mean = log(mean(fish)), .groups = "drop")
+
+explain <- paste0(
+  "THE EXPERIMENT\n",
+  "Tree suitability: one number standing in for everything that makes a tree good for fish\n",
+  "(distance to reef, aspect, tree size, ...). 3,000 sites, 2 counts per site.\n\n",
+  "How the fake data were made:\n",
+  "   fish count  ~  NB1( mean = μ,  variance = μ (1 + φ) )\n",
+  "   log μ  =  1.5  +  1 × suitability  +  site effect,        site effect  ~  Normal(0, 1.6²)\n\n",
+  "Model WITH the site term (blue): same recipe as above.\n",
+  "   Variance it assumes: μ (1 + φ) around each site's own mean.  Matches how the data were made.\n\n",
+  "Model WITHOUT the site term (orange): no site effect, so the site-to-site differences become part of the noise.\n",
+  "   Variance it assumes: μ (1 + φ)  (one straight-line rule for every tree)\n",
+  "   Variance the data actually have:  ≈ μ (1 + φ)  +  μ² × (e^(1.6²) − 1)   (grows much faster for high-μ trees)"
+)
+p_text <- ggplot() +
+  annotate("label", x = 0, y = 0, label = explain, hjust = 0, vjust = 0.5, size = 3.4,
+           label.padding = unit(0.6, "lines")) +
+  xlim(0, 1) +
+  theme_void()
+
+pA <- ggplot(suit_bins, aes(x = suitability, y = log_mean)) +
+  geom_abline(intercept = s_beta[1] + s_sigma^2 / 2, slope = s_beta[2], linetype = 2) +
+  geom_abline(data = suit_lines, aes(intercept = intercept, slope = slope, colour = flavor), linewidth = 1) +
+  geom_point(size = 2.5) +
+  annotate("label", x = 0, y = Inf, vjust = 1.1, hjust = 0, size = 3,
+           label = "Dots: average fish count for trees\nat that suitability (12 groups)\nDashed: the true relationship\nLines: what each model fitted") +
+  scale_colour_model(name = NULL) +
+  labs(title = "A. Fitted relationship", x = "Tree suitability", y = "log(average fish count)")
+
+pB <- ggplot(suit_profile, aes(x = slope, y = rel_logLik, colour = flavor)) +
+  geom_vline(xintercept = s_beta[2], linetype = 2) +
+  geom_line(linewidth = 1) +
+  geom_point(data = suit_peaks, size = 3) +
+  geom_label(data = suit_peaks, aes(label = sprintf("picks %.2f", slope)), vjust = -0.4, size = 3, show.legend = FALSE) +
+  annotate("label", x = Inf, y = -Inf, hjust = 1.02, vjust = -0.1, size = 3,
+           label = "For each candidate slope: refit everything else,\nscore how well it explains all 6,000 counts.\nTop of each curve = the slope that model picks.\nDashed: the true slope (1)") +
+  scale_colour_model(guide = "none") +
+  labs(title = "B. How well each slope explains the data", x = "Candidate slope for tree suitability",
+       y = "Log-likelihood\n(0 = the model's best slope)")
+
+p_text / (pA | pB) +
+  plot_layout(heights = c(1, 1.6), guides = "collect") &
+  theme(legend.position = "bottom")
+
+suit_lines
+```
+
+::::
+
+### Coverage of the 95% intervals
+
+The share of replicates whose 95% CI contains the true coefficient, by term, σ and model. The dashed line is at 0.95. With 250 replicates per point, the Monte Carlo standard error of a coverage near 0.95 is about 0.014. Note that the "true" intercept is the one from `mod2` (the intercept for a location with a = 0).
+
+```{r, fig.width=10, fig.height=6}
+ramp$coef |>
+  group_by(sigma, flavor, term) |>
+  summarise(coverage = mean(covered), .groups = "drop") |>
+  ggplot(aes(x = sigma, y = coverage, colour = flavor)) +
+  geom_hline(yintercept = 0.95, linetype = 2) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~ term) +
+  scale_colour_model(name = NULL) +
+  xlab("σ (true SD of location intercepts)") +
+  ylab("95% CI coverage")
+```
+
+::: {.callout-note appearance="simple"}
+**Interpretation:**
+Similar to above, as the average beta estimate (for all but `Aspect`) is drifting further from the real parameter value (in the case of the no-location model), we are seeing that the CI is capturing the true value less and less often, where the random effects model is largely unaffected by the increase in site-specific variance. Interestingly `Aspect` seems also, largely unaffected, but in this case it's because the SE's are wide enough that we still capturing the real value. 
+:::
