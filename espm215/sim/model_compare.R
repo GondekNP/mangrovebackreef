@@ -104,16 +104,32 @@ link_to_response <- function(mod, data, flavor) {
                 flavor = as_flavor(flavor))
 }
 
-# Three panels per model (one row each): the linear part (eta per observation,
-# with an arrow from X beta to eta where random-effect terms move it), the link
+# The fitted TreePerimeter line (or curve, for a smooth) for each aspect, on the
+# link scale: DistReef at its mean, no site effect (new LocationID) and no
+# spatial effect (basis columns zeroed; a far-away position for exp(); for
+# s(x, y), the surface at the centre of the sites).
+tree_line <- function(mod, data, flavor, n = 60) {
+  tp   <- seq(min(data$TreePerimeter), max(data$TreePerimeter), length.out = n)
+  grid <- data[rep(1, n * nlevels(data$Aspect)), , drop = FALSE]
+  grid$TreePerimeter <- rep(tp, nlevels(data$Aspect))
+  grid$Aspect   <- factor(rep(levels(data$Aspect), each = n), levels = levels(data$Aspect))
+  grid$DistReef <- mean(data$DistReef)
+  grid$LocationID <- -1
+  basis <- grep("^[ek][0-9]+$", names(grid), value = TRUE)
+  grid[basis] <- 0
+  if ("x_km" %in% names(grid)) grid$x_km <- grid$y_km <- 0
+  if ("pos" %in% names(grid)) grid$pos <- glmmTMB::numFactor(rep(1e3, nrow(grid)), rep(1e3, nrow(grid)))
+  data.frame(TreePerimeter = grid$TreePerimeter, Aspect = grid$Aspect, flavor = as_flavor(flavor),
+             eta = as.numeric(predict(mod, newdata = grid, re.form = NULL, allow.new.levels = TRUE)))
+}
+
+# Three panels per model (one row each): the linear part (each observation's eta
+# against TreePerimeter, with the fitted line for each aspect), the link
 # (mu = exp(eta)), and the response (observed counts against mu with the NB1
-# 50% and 90% predictive bands).
+# 50% and 90% predictive bands), the last on log(x + 1) axes so zeros can be shown.
 plot_link_to_response <- function(models, data) {
-  lr <- dplyr::bind_rows(Map(link_to_response, models, list(data), names(models))) |>
-    dplyr::group_by(flavor) |>
-    dplyr::mutate(row = rank(eta, ties.method = "first")) |>
-    dplyr::ungroup()
-  shifted <- dplyr::filter(lr, abs(eta - eta_fixed) > 1e-8)
+  lr <- dplyr::bind_rows(Map(link_to_response, models, list(data), names(models)))
+  lines <- dplyr::bind_rows(Map(tree_line, models, list(data), names(models)))
 
   band <- lr |>
     dplyr::group_by(flavor) |>
@@ -125,17 +141,18 @@ plot_link_to_response <- function(models, data) {
     dplyr::summarise(label = sprintf("φ = %.1f\n%d of %d counts inside the 90%% band",
                                      phi[1], sum(inside90), dplyr::n()),
                      x = min(mu), .groups = "drop")
+  count_breaks <- c(0, 3, 10, 30, 100, 300, 1000, 3000)
 
   facet <- ggplot2::facet_wrap(~ flavor, ncol = 1)
-  p_lin <- ggplot2::ggplot(lr, ggplot2::aes(x = row, colour = flavor)) +
-    ggplot2::geom_segment(data = shifted, ggplot2::aes(xend = row, y = eta_fixed, yend = eta),
-                          arrow = ggplot2::arrow(length = ggplot2::unit(0.08, "cm")), alpha = 0.6) +
-    ggplot2::geom_point(ggplot2::aes(y = eta_fixed), shape = 1, alpha = 0.6) +
-    ggplot2::geom_point(ggplot2::aes(y = eta), size = 1.8) +
+  p_lin <- ggplot2::ggplot(lr, ggplot2::aes(x = TreePerimeter, y = eta, colour = flavor)) +
+    ggplot2::geom_line(data = lines, ggplot2::aes(linetype = Aspect), linewidth = 0.8) +
+    ggplot2::geom_point(ggplot2::aes(shape = Aspect), size = 1.8) +
     facet + scale_colour_model(guide = "none") +
-    ggplot2::labs(title = "1. Linear part (link scale)",
-                  subtitle = "open = fixed effects Xβ; filled = η after\nrandom-effect terms (arrows)",
-                  x = "Observations, ordered by η", y = "η = log(predicted mean)")
+    ggplot2::scale_shape_manual(values = c(e = 16, s = 1)) +
+    ggplot2::scale_linetype_manual(values = c(e = 1, s = 2)) +
+    ggplot2::labs(title = "1. Linear part: η = Xβ (+ random terms)",
+                  subtitle = "lines: fitted η for each aspect (DistReef at its mean,\nno site or spatial effect); points: each observation's η",
+                  x = "Tree perimeter (m)", y = "η = log(predicted mean)")
   p_link <- ggplot2::ggplot(lr, ggplot2::aes(x = eta, y = mu, colour = flavor)) +
     ggplot2::stat_function(fun = exp, colour = "grey40", linetype = 2,
                            xlim = range(lr$eta)) +
@@ -152,10 +169,10 @@ plot_link_to_response <- function(models, data) {
                         size = 2.8, inherit.aes = FALSE) +
     facet + scale_colour_model(guide = "none") + scale_fill_model(guide = "none") +
     ggplot2::scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 4), guide = "none") +
-    ggplot2::scale_x_log10() +
-    ggplot2::scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1), breaks = c(0, 3, 10, 30, 100, 300)) +
+    ggplot2::scale_x_continuous(trans = "log1p", breaks = count_breaks) +
+    ggplot2::scale_y_continuous(trans = "log1p", breaks = count_breaks) +
     ggplot2::labs(title = "3. Response: counts ~ NB1(μ, φ)",
                   subtitle = "bands: 50% and 90% of NB1 counts with mean μ;\ndashed: count = μ; points: observed (× = outside 90%)",
-                  x = "μ = predicted mean count (log scale)", y = "Observed count (log-ish scale)")
+                  x = "μ = predicted mean count (axis: log(μ + 1))", y = "Observed count (axis: log(count + 1))")
   patchwork::wrap_plots(p_lin, p_link, p_resp, nrow = 1)
 }

@@ -93,6 +93,15 @@ summary(mod0)
 ```
 For the record - `(1 | LocationID)` is not really "spatial". It says the two rows (e and s) at the same tree share something, but nothing about neighboring trees being similar. The actually spatial models come later (stage 4).
 
+One more, only to illustrate the collinearity from the pairs plot: `mod2` plus `DistIsland`, which is negatively correlated with `DistReef` (r = `r round(cor(HTrees2$DistReef, HTrees2$DistIsland), 2)` in these data). The authors' own `mod1` includes both (Q2 line 159). Compare the `DistReef` row with `mod2`'s summary above:
+```{r}
+mod_collinear <- glmmTMB(Abundance ~ TreePerimeter + Aspect + DistReef + DistIsland
+                         + (1 | LocationID),
+                         family = nbinom1(),
+                         data = HTrees2)
+summary(mod_collinear)
+```
+
 From here on every diagnostic is shown for both models side by side. Each model flavor gets its own colour (`model_palette` in `sim/model_compare.R`) which stays fixed for the GAMs and spatial basis models later on:
 ```{r}
 cmp <- compare_models(list("No location" = mod0, "Location RE" = mod2), HTrees2)
@@ -166,7 +175,7 @@ pC <- ggplot(ex_pmf, aes(x = k, y = prob, colour = flavor)) +
 pA + pB + pC + plot_layout(widths = c(2.2, 1, 1.4))
 ```
 
-Then all 48 observations at once, one row per model: (1) η for each observation, from the fixed effects alone (open) to the full η (filled; arrows show what the site intercepts add); (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ:
+Then all 48 observations at once, one row per model: (1) each observation's η against `TreePerimeter`, with the model's fitted line for each aspect (`DistReef` at its mean, no site effect): η is a weighted sum of the covariates, so against one covariate with the others held fixed it is a straight line, and the points scatter around it by their `DistReef` and site contributions; (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ (both axes on a log(x + 1) scale, so zero counts can be shown):
 
 ```{r, fig.width=14, fig.height=7}
 plot_link_to_response(list("No location" = mod0, "Location RE" = mod2), HTrees2)

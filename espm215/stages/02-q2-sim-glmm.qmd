@@ -120,7 +120,7 @@ Both the location and no-location and no location are over-estimating variance (
 
 Every model here is a GLM(M) with three parts: a **linear part** η = Xβ (plus any random-effect terms) on the log scale, a **link** that turns it into a predicted mean count μ = exp(η), and a **response distribution** that says how real counts scatter around μ: NB1, with variance μ(1 + φ). NB1's variance, μ(1 + φ), is a constant multiple of the mean: the same shape quasi-Poisson assumes (Var = θμ, with θ = 1 + φ). Unlike quasi-Poisson, NB1 is a full probability distribution, so it gives an actual spread of counts for each μ.
 
-The same three parts for the simulated data set. One row per model: (1) η for each observation, from the fixed effects alone (open) to the full η (filled; arrows show what the random-effect terms add); (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ:
+The same three parts for the simulated data set. One row per model: (1) each observation's η against `TreePerimeter`, with the model's fitted line for each aspect (`DistReef` at its mean, no site effect): η is a weighted sum of the covariates, so against one covariate with the others held fixed it is a straight line, and the points scatter around it by their `DistReef` and site contributions; (2) the same observations pushed through exp(); (3) the observed counts against μ, with the 50% and 90% bands of NB1 counts for each μ under that model's φ (both axes on a log(x + 1) scale, so zero counts can be shown):
 
 ```{r, fig.width=14, fig.height=7}
 plot_link_to_response(models1, sim1)
